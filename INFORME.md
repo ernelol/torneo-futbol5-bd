@@ -107,7 +107,6 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 - **2027, 1.er semestre (en inscripción):** un equipo con 3 jugadores, para probar el ABM de planteles.
 
 ## 5. Bitácora
-Todas las etapas se hicieron con asistencia de Claude Code (ver sección 6).
 
 | Etapa | Trabajo realizado |
 |---|---|
@@ -118,8 +117,11 @@ Todas las etapas se hicieron con asistencia de Claude Code (ver sección 6).
 
 ## 6. Uso de inteligencia artificial
 Según lo que pide el syllabus de la materia (sección 1.5), se declara que se usó Claude Code (modelo Claude Opus 5.5, de Anthropic)
-como asistente para diseñar el modelo y escribir el código, los datos de prueba, las pruebas y este informe.
-El trabajo se revisó contra la letra y los materiales del curso. Los datos de prueba son inventados.
+para diseñar el modelo y escribir el código, los datos de prueba, las pruebas y este informe.
+
+Los criterios y las decisiones del trabajo fueron del estudiante: mantener la solución simple y limitada a lo visto en el curso,
+aportar la letra y los materiales para contrastar el resultado, pedir las revisiones y decidir qué se quitaba y qué se dejaba.
+Los datos de prueba son inventados.
 
 ## 7. Bibliografía
 - Universidad Católica del Uruguay. Base de Datos I: *Syllabus 2026-2*, presentaciones *SQL*, *JOIN en SQL*, *Seguridad*, *Transacciones y ACID* y *Ejemplo de PRIMARY KEY y FOREIGN KEY*, y `docker-compose` inicial.
