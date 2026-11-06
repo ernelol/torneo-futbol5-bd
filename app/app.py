@@ -15,7 +15,7 @@ import reglas
 import validacion as v
 from opciones import (COLORES_TARJETA, DEPARTAMENTOS, ESTADO_JUGADO, ESTADOS_PARTIDO, ESTADOS_TORNEO, ETIQUETAS,
                       MOTIVOS_SANCION, ROL_ADMIN, ROL_PLANILLERO, SUPERFICIES, TIPOS_JUGADOR)
-from reportes import REPORTES, RESULTADOS
+from reportes import REPORTES
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "clave-de-desarrollo")
@@ -271,7 +271,8 @@ def agregar_al_plantel(id_equipo):
     def accion():
         f = request.form
         ci, camiseta = v.ci(f, "ci_jugador"), v.entero(f, "numero_camiseta", 1, 99)
-        equipo = db.consultar_uno("SELECT * FROM equipo WHERE id_equipo = %s", (id_equipo,))
+        # FOR UPDATE: dos altas a la vez en el mismo equipo no pasan juntas el control de 10 jugadores
+        equipo = db.consultar_uno("SELECT * FROM equipo WHERE id_equipo = %s FOR UPDATE", (id_equipo,))
         reglas.verificar_alta_en_plantel(equipo, ci)
         db.ejecutar("""INSERT INTO equipo_jugador_torneo (id_equipo, ci_jugador, id_torneo, numero_camiseta)
                        VALUES (%s, %s, %s, %s)""", (id_equipo, ci, equipo["id_torneo"], camiseta))
@@ -366,14 +367,14 @@ def eliminar_cancha():
 def partidos():
     torneos, torneo = torneos_y_elegido()
     id_torneo = torneo["id_torneo"] if torneo else None
-    lista = db.consultar(f"""SELECT p.*, el.nombre AS local, ev.nombre AS visitante, co.nombre AS complejo,
-                                   TIME_FORMAT(t.hora_inicio, '%%H:%%i') AS hora, r.goles_local, r.goles_visitante
+    lista = db.consultar("""SELECT p.*, el.nombre AS local, ev.nombre AS visitante, co.nombre AS complejo,
+                                   t.hora_inicio AS hora, r.goles_local, r.goles_visitante
                             FROM partido p
                             JOIN equipo el ON el.id_equipo = p.id_equipo_local
                             JOIN equipo ev ON ev.id_equipo = p.id_equipo_visitante
                             JOIN turno t ON t.id_turno = p.id_turno
                             JOIN complejo co ON co.id_complejo = p.id_complejo
-                            JOIN {RESULTADOS} r ON r.id_partido = p.id_partido
+                            JOIN resultado_partido r ON r.id_partido = p.id_partido
                             WHERE p.id_torneo = %s ORDER BY p.numero_fecha, p.dia, t.hora_inicio""", (id_torneo,))
     opciones, editando = None, None
     if session["rol"] == ROL_ADMIN:  # el formulario es solo para el administrador
@@ -386,8 +387,7 @@ def partidos():
 def opciones_de_partido(id_torneo) -> dict:
     return dict(
         equipos=db.consultar("SELECT id_equipo, nombre FROM equipo WHERE id_torneo = %s ORDER BY nombre", (id_torneo,)),
-        turnos=db.consultar("""SELECT id_turno, CONCAT(TIME_FORMAT(hora_inicio, '%%H:%%i'), ' a ',
-                               TIME_FORMAT(hora_fin, '%%H:%%i')) AS horario FROM turno ORDER BY hora_inicio"""),
+        turnos=db.consultar("SELECT id_turno, CONCAT(hora_inicio, ' a ', hora_fin) AS horario FROM turno ORDER BY hora_inicio"),
         canchas=db.consultar("""SELECT c.nombre_cancha, c.id_complejo, co.nombre AS complejo FROM cancha c
                                 JOIN complejo co ON co.id_complejo = c.id_complejo ORDER BY co.nombre, c.nombre_cancha"""),
     )
@@ -398,6 +398,7 @@ def opciones_de_partido(id_torneo) -> dict:
 def guardar_partido():
     def accion():
         f = request.form
+        reglas.reservar_torneo(f["id_torneo"])
         opciones = opciones_de_partido(f.get("id_torneo"))
         equipos_validos = ids(opciones["equipos"], "id_equipo")
         canchas_validas = {f"{c['id_complejo']}|{c['nombre_cancha']}" for c in opciones["canchas"]}
@@ -449,13 +450,13 @@ def eliminar_partido(id_partido):
 @app.route("/partidos/<int:id_partido>/planilla")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def planilla(id_partido):
-    partido = db.consultar_uno(f"""SELECT p.*, el.nombre AS local, ev.nombre AS visitante, r.goles_local,
-                                         r.goles_visitante, TIME_FORMAT(t.hora_inicio, '%%H:%%i') AS hora
+    partido = db.consultar_uno("""SELECT p.*, el.nombre AS local, ev.nombre AS visitante, r.goles_local,
+                                         r.goles_visitante, t.hora_inicio AS hora
                                   FROM partido p
                                   JOIN equipo el ON el.id_equipo = p.id_equipo_local
                                   JOIN equipo ev ON ev.id_equipo = p.id_equipo_visitante
                                   JOIN turno t ON t.id_turno = p.id_turno
-                                  JOIN {RESULTADOS} r ON r.id_partido = p.id_partido
+                                  JOIN resultado_partido r ON r.id_partido = p.id_partido
                                   WHERE p.id_partido = %s""", (id_partido,))
     en_planilla = db.consultar("""SELECT pp.ci_jugador, j.nombre, j.apellido, e.nombre AS equipo
                                   FROM planilla_partido pp JOIN jugador j ON j.ci = pp.ci_jugador

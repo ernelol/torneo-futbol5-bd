@@ -70,6 +70,13 @@ def verificar_alta_en_plantel(equipo: dict, ci) -> None:
 
 # ---------------------------------------------------------------- partidos
 
+def reservar_torneo(id_torneo) -> None:
+    """FOR UPDATE: «leo y me reservo la fila». Si dos administradores programan a la vez, el segundo espera al
+    COMMIT del primero. Tiene que ser la primera consulta de la transacción, para que las siguientes vean
+    lo que el otro ya confirmó."""
+    db.consultar("SELECT id_torneo FROM torneo WHERE id_torneo = %s FOR UPDATE", (id_torneo,))
+
+
 def verificar_partido_no_jugado(id_partido) -> None:
     partido = db.consultar_uno("SELECT estado FROM partido WHERE id_partido = %s", (id_partido,))
     if partido["estado"] == ESTADO_JUGADO:

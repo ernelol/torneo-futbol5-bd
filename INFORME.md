@@ -9,12 +9,12 @@ Repositorio: https://github.com/ernelol/torneo-futbol5-bd
 ### Arquitectura
 - **Flask y plantillas HTML.** El frontend se genera en el servidor con Jinja y no hay un framework de frontend aparte.
   Para un sistema de formularios y tablas alcanza, y evita mantener una API y una aplicación cliente por separado.
-- **PyMySQL sin ORM.** Todas las consultas están escritas en SQL y usan parámetros (`%s`), lo que evita la inyección SQL.
+- **PyMySQL sin ORM.** Todas las consultas están escritas en SQL y usan parámetros (`%s`), sin concatenar datos del usuario, lo que evita la inyección SQL.
 - **Una conexión por pedido** (`db.py`). Cada acción corre en una transacción: si algo falla, se hace `rollback`.
 
 ### Dónde está cada regla
-Se usan solo temas del curso: SQL, joins, funciones de agregación, seguridad con usuarios y transacciones.
-No se usan triggers, procedimientos almacenados ni vistas. Lo que la base puede garantizar con claves y `CHECK`
+Se usan temas del curso: restricciones, vistas, joins, funciones de agregación, privilegios y transacciones.
+No se usan triggers ni procedimientos almacenados. Lo que la base puede garantizar con claves y `CHECK`
 queda en la base; lo demás está en `reglas.py`, escrito una sola vez, como consultas SQL dentro de la transacción de cada acción.
 
 | Regla | Dónde se controla |
@@ -36,8 +36,15 @@ queda en la base; lo demás está en `reglas.py`, escrito una sola vez, como con
 | La planilla se corrige solo dentro de las 48 horas | `verificar_planilla_editable` |
 | Sanción automática por roja o por cada 3 amarillas | `sancionar_por_tarjeta` |
 
-**Transacciones:** cada acción se confirma con `commit` y, ante cualquier error, se deshace con `rollback`.
-Por ejemplo, una tarjeta y la sanción que genera se guardan juntas o no se guarda ninguna (atomicidad).
+### Transacciones y ACID
+| Propiedad | En este sistema |
+|---|---|
+| Atomicidad | Cada acción termina en `commit` o, ante un error, en `rollback` (función `realizar`). Una tarjeta y la sanción que genera se guardan juntas o no se guarda ninguna. |
+| Consistencia | Claves primarias y foráneas, `UNIQUE`, `CHECK` y las reglas de `reglas.py`. |
+| Aislamiento | `SELECT ... FOR UPDATE` al programar un partido y al agregar a un plantel: si dos usuarios lo hacen a la vez, el segundo espera al `COMMIT` del primero y decide con datos actualizados. |
+| Durabilidad | La garantiza el motor: lo confirmado sobrevive a un corte. |
+
+Las transacciones son cortas: empiezan y terminan dentro de un mismo pedido, nunca quedan abiertas esperando al usuario.
 
 ### Validación en las tres capas
 - **Frontend:** atributos HTML (`required`, `min`, `max`, `maxlength`, `pattern`, `type="email"`, `type="date"`).
@@ -56,7 +63,7 @@ Por ejemplo, una tarjeta y la sanción que genera se guardan juntas o no se guar
 
 ## 2. Mejoras al modelo de datos
 
-- **El resultado no se guarda: se calcula** con una subconsulta a partir de los goles
+- **El resultado no se guarda: se calcula** con la vista `resultado_partido` a partir de los goles
   (el autogol suma para el rival). Así es imposible que el resultado y los goles no coincidan.
 - **`partido` tiene además `UNIQUE (id_partido)`.** La clave primaria es `(id_partido, id_torneo)`, como pide la letra, pero `planilla_partido`
   referencia solo a `id_partido`, y una clave foránea necesita apuntar a una clave completa.
@@ -76,8 +83,6 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 - Las reglas de `reglas.py` se aplican al usar la aplicación: quien modifique la base directamente con un usuario
   con permisos puede saltearlas. Las claves, los `CHECK` y los permisos rigen siempre.
 - Si se cambian los equipos de un partido que ya tiene planilla cargada, hay que quitar y volver a cargar esa planilla.
-- Dos administradores que programen a la vez la misma cancha podrían pasar el control al mismo tiempo.
-  Se consideró aceptable por la cantidad de usuarios del sistema.
 - Si se corrige una planilla borrando una amarilla anterior a la tercera, la suspensión por acumulación no se recalcula:
   el administrador la elimina desde el ABM de sanciones. Si se borra la tercera amarilla, la sanción se borra sola.
 - Las contraseñas de los usuarios de base de datos están en el script y tienen valores por defecto en la aplicación.
@@ -87,7 +92,7 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 1. **Jugadores al borde de la suspensión:** los que tienen 2 amarillas acumuladas y se suspenden con la próxima.
    Le sirve a la organización y a los capitanes.
 2. **Jugadores con más partidos disputados:** mide la participación y el compromiso.
-3. **Edad promedio de cada plantel:** ayuda al área de deportes a ver cómo se compone cada equipo.
+3. **Próximos partidos programados:** ayuda a la organización a preparar canchas y planilleros.
 
 ## 4. Datos de prueba
 `db/torneo.sql` carga 7 facultades, 44 jugadores, 2 complejos con 3 canchas y 5 turnos, y 2 ediciones:
@@ -102,12 +107,20 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 | Fecha | Trabajo realizado |
 |---|---|
 | 30/10/2026 | Modelo de datos, script SQL con triggers, usuarios de BD, datos de prueba, aplicación Flask y Docker Compose, con asistencia de Claude Code (IA). Pruebas sobre MariaDB. |
-| 06/11/2026 | Revisión contra la letra y el temario del curso, con asistencia de Claude Code. Las reglas pasan de triggers a consultas en Python, porque triggers, procedimientos y vistas no figuran en el temario. Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. Pruebas de las reglas sobre MariaDB. |
+| 06/11/2026 | Revisión contra la letra y el temario del curso, con asistencia de Claude Code. Las reglas pasan de triggers a consultas en Python, porque los triggers no están en los materiales del curso. Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. Pruebas de las reglas sobre MariaDB. |
+| 06/11/2026 | Revisión contra los materiales del curso, con asistencia de Claude Code: se usan vistas para los resultados y `FOR UPDATE` para el aislamiento, y se quitan funciones de SQL que no figuran en ellos. Pruebas sobre MariaDB. |
 | _completar_ | _Prueba con `docker compose up` sobre MySQL 8.4._ |
 
-## 6. Bibliografía
+## 6. Uso de inteligencia artificial
+Según lo que pide el syllabus de la materia (sección 1.5), se declara que se usó Claude Code (modelo Claude Opus 5.5, de Anthropic)
+como asistente para diseñar el modelo y escribir el código, los datos de prueba, las pruebas y este informe.
+El trabajo se revisó contra la letra y los materiales del curso. Los datos de prueba son inventados.
+
+## 7. Bibliografía
 Fuentes consultadas el 06/11/2026.
 
+- Universidad Católica del Uruguay. Base de Datos I: *Syllabus 2026-2* y presentaciones *SQL*, *JOIN en SQL*, *Seguridad* y *Transacciones y ACID*.
+- Anthropic. (2026). *Claude Code* (Claude Opus 5.5) [Asistente de inteligencia artificial]. https://claude.ai/code
 - Oracle. *MySQL 8.4 Reference Manual*: "CHECK Constraints" y "GRANT Statement". https://dev.mysql.com/doc/refman/8.4/en/
 - Pallets. *Flask Documentation (3.1.x)*: "Message Flashing". https://flask.palletsprojects.com/en/stable/patterns/flashing/
 - *PyMySQL Documentation*: "Installation". https://pymysql.readthedocs.io/en/latest/user/installation.html

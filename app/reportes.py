@@ -3,20 +3,6 @@ Todas reciben el parámetro %(torneo)s (las que no lo usan lo ignoran)."""
 from dataclasses import dataclass
 
 
-# Goles de cada partido, calculados a partir de la tabla gol. Un autogol suma para el rival.
-RESULTADOS = """(
-    SELECT p.id_partido,
-           SUM(CASE WHEN (pp.id_equipo = p.id_equipo_local AND NOT g.autogol)
-                      OR (pp.id_equipo = p.id_equipo_visitante AND g.autogol) THEN 1 ELSE 0 END) AS goles_local,
-           SUM(CASE WHEN (pp.id_equipo = p.id_equipo_visitante AND NOT g.autogol)
-                      OR (pp.id_equipo = p.id_equipo_local AND g.autogol) THEN 1 ELSE 0 END) AS goles_visitante
-    FROM partido p
-    LEFT JOIN gol g ON g.id_partido = p.id_partido
-    LEFT JOIN planilla_partido pp ON pp.id_partido = g.id_partido AND pp.ci_jugador = g.ci_jugador
-    GROUP BY p.id_partido
-)"""
-
-
 @dataclass
 class Reporte:
     titulo: str
@@ -24,7 +10,9 @@ class Reporte:
 
 
 REPORTES = [
-    Reporte("Tabla de posiciones", f"""
+    # LEFT JOIN: aparecen también los equipos que todavía no jugaron (COALESCE cambia su NULL por 0).
+    # En MySQL una comparación vale 1 o 0, así que SUM(r.gf > r.gc) cuenta los partidos ganados.
+    Reporte("Tabla de posiciones", """
         SELECT e.nombre AS Equipo,
                COUNT(r.id_equipo) AS PJ,
                COALESCE(SUM(r.gf > r.gc), 0) AS PG,
@@ -33,17 +21,8 @@ REPORTES = [
                COALESCE(SUM(r.gf), 0) AS GF,
                COALESCE(SUM(r.gc), 0) AS GC,
                COALESCE(SUM(r.gf - r.gc), 0) AS DG,
-               COALESCE(SUM(3 * (r.gf > r.gc) + (r.gf = r.gc)), 0) AS Puntos
-        FROM equipo e
-        LEFT JOIN (
-            SELECT p.id_equipo_local AS id_equipo, r.goles_local AS gf, r.goles_visitante AS gc
-            FROM partido p JOIN {RESULTADOS} r ON r.id_partido = p.id_partido
-            WHERE p.estado = 'jugado'
-            UNION ALL
-            SELECT p.id_equipo_visitante, r.goles_visitante, r.goles_local
-            FROM partido p JOIN {RESULTADOS} r ON r.id_partido = p.id_partido
-            WHERE p.estado = 'jugado'
-        ) r ON r.id_equipo = e.id_equipo
+               COALESCE(3 * SUM(r.gf > r.gc) + SUM(r.gf = r.gc), 0) AS Puntos
+        FROM equipo e LEFT JOIN resultado_equipo r ON r.id_equipo = e.id_equipo
         WHERE e.id_torneo = %(torneo)s
         GROUP BY e.id_equipo, e.nombre
         ORDER BY Puntos DESC, DG DESC, GF DESC"""),
@@ -62,9 +41,9 @@ REPORTES = [
 
     Reporte("Fair play por equipo (amarilla = 1, roja = 3; gana el menor puntaje)", """
         SELECT e.nombre AS Equipo,
-               COUNT(CASE t.color WHEN 'amarilla' THEN 1 END) AS Amarillas,
-               COUNT(CASE t.color WHEN 'roja' THEN 1 END) AS Rojas,
-               COALESCE(SUM(CASE t.color WHEN 'amarilla' THEN 1 WHEN 'roja' THEN 3 END), 0) AS Puntaje
+               COALESCE(SUM(t.color = 'amarilla'), 0) AS Amarillas,
+               COALESCE(SUM(t.color = 'roja'), 0) AS Rojas,
+               COALESCE(SUM(t.color = 'amarilla') + 3 * SUM(t.color = 'roja'), 0) AS Puntaje
         FROM equipo e
         LEFT JOIN planilla_partido pp ON pp.id_equipo = e.id_equipo
         LEFT JOIN tarjeta t ON t.id_partido = pp.id_partido AND t.ci_jugador = pp.ci_jugador
@@ -72,19 +51,21 @@ REPORTES = [
         GROUP BY e.id_equipo, e.nombre
         ORDER BY Puntaje, Equipo"""),
 
-    Reporte("Promedio de goles por partido", f"""
-        SELECT CONCAT('Fecha ', p.numero_fecha) AS Fecha, COUNT(*) AS Partidos,
+    Reporte("Promedio de goles por partido en cada fecha", """
+        SELECT p.numero_fecha AS Fecha, COUNT(*) AS Partidos,
                SUM(r.goles_local + r.goles_visitante) AS Goles,
                ROUND(AVG(r.goles_local + r.goles_visitante), 2) AS Promedio
-        FROM partido p JOIN {RESULTADOS} r ON r.id_partido = p.id_partido
+        FROM partido p JOIN resultado_partido r ON r.id_partido = p.id_partido
         WHERE p.id_torneo = %(torneo)s AND p.estado = 'jugado'
         GROUP BY p.numero_fecha
-        UNION ALL
-        SELECT 'Toda la edición', COUNT(*), SUM(r.goles_local + r.goles_visitante),
-               ROUND(AVG(r.goles_local + r.goles_visitante), 2)
-        FROM partido p JOIN {RESULTADOS} r ON r.id_partido = p.id_partido
-        WHERE p.id_torneo = %(torneo)s AND p.estado = 'jugado'
-        HAVING COUNT(*) > 0"""),
+        ORDER BY p.numero_fecha"""),
+
+    Reporte("Promedio de goles por partido en toda la edición", """
+        SELECT COUNT(*) AS Partidos,
+               SUM(r.goles_local + r.goles_visitante) AS Goles,
+               ROUND(AVG(r.goles_local + r.goles_visitante), 2) AS Promedio
+        FROM partido p JOIN resultado_partido r ON r.id_partido = p.id_partido
+        WHERE p.id_torneo = %(torneo)s AND p.estado = 'jugado'"""),
 
     Reporte("Canchas más utilizadas", """
         SELECT CONCAT(c.nombre, ' - ', p.nombre_cancha) AS Cancha, COUNT(*) AS Partidos
@@ -94,8 +75,7 @@ REPORTES = [
         ORDER BY Partidos DESC, Cancha"""),
 
     Reporte("Turnos más utilizados", """
-        SELECT CONCAT(TIME_FORMAT(t.hora_inicio, '%%H:%%i'), ' a ', TIME_FORMAT(t.hora_fin, '%%H:%%i')) AS Turno,
-               COUNT(*) AS Partidos
+        SELECT CONCAT(t.hora_inicio, ' a ', t.hora_fin) AS Turno, COUNT(*) AS Partidos
         FROM partido p JOIN turno t ON t.id_turno = p.id_turno
         WHERE p.id_torneo = %(torneo)s AND p.estado <> 'cancelado'
         GROUP BY t.id_turno, t.hora_inicio, t.hora_fin
@@ -162,13 +142,13 @@ REPORTES = [
         ORDER BY Partidos DESC, Jugador
         LIMIT 10"""),
 
-    Reporte("Propuesta 3: edad promedio de cada plantel", """
-        SELECT e.nombre AS Equipo, COUNT(*) AS Jugadores,
-               ROUND(AVG(TIMESTAMPDIFF(YEAR, j.fecha_nacimiento, CURDATE())), 1) AS `Edad promedio`
-        FROM equipo e
-        JOIN equipo_jugador_torneo ejt ON ejt.id_equipo = e.id_equipo
-        JOIN jugador j ON j.ci = ejt.ci_jugador
-        WHERE e.id_torneo = %(torneo)s
-        GROUP BY e.id_equipo, e.nombre
-        ORDER BY `Edad promedio`"""),
+    Reporte("Propuesta 3: próximos partidos programados", """
+        SELECT p.numero_fecha AS Fecha, p.dia AS Dia, t.hora_inicio AS Hora,
+               l.nombre AS Local, v.nombre AS Visitante, p.nombre_cancha AS Cancha
+        FROM partido p
+        JOIN turno t ON t.id_turno = p.id_turno
+        JOIN equipo l ON l.id_equipo = p.id_equipo_local
+        JOIN equipo v ON v.id_equipo = p.id_equipo_visitante
+        WHERE p.id_torneo = %(torneo)s AND p.estado = 'programado'
+        ORDER BY p.dia, t.hora_inicio"""),
 ]

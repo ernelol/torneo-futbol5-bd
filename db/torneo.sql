@@ -34,7 +34,7 @@ CREATE TABLE jugador (
     id_facultad      INT NOT NULL,
     tipo             ENUM('grado', 'posgrado', 'docente', 'funcionario') NOT NULL,
     FOREIGN KEY (id_facultad) REFERENCES facultad (id_facultad),
-    CHECK (ci REGEXP '^[0-9]{7,8}$'),
+    CHECK (ci LIKE '_______' OR ci LIKE '________'),  -- 7 u 8 caracteres
     CHECK (email LIKE '%_@_%._%'),
     CHECK (fecha_nacimiento >= '1920-01-01')
 );
@@ -177,6 +177,31 @@ CREATE TABLE sancion_jugador (
     CHECK (cantidad_fechas BETWEEN 1 AND 20)
 );
 
+-- El resultado no se guarda: se calcula a partir de los goles. Un autogol suma para el rival.
+CREATE VIEW resultado_partido AS
+SELECT p.id_partido,
+       (SELECT COUNT(*)
+        FROM gol g JOIN planilla_partido pp ON pp.id_partido = g.id_partido AND pp.ci_jugador = g.ci_jugador
+        WHERE g.id_partido = p.id_partido
+          AND ((pp.id_equipo = p.id_equipo_local AND NOT g.autogol)
+               OR (pp.id_equipo = p.id_equipo_visitante AND g.autogol))) AS goles_local,
+       (SELECT COUNT(*)
+        FROM gol g JOIN planilla_partido pp ON pp.id_partido = g.id_partido AND pp.ci_jugador = g.ci_jugador
+        WHERE g.id_partido = p.id_partido
+          AND ((pp.id_equipo = p.id_equipo_visitante AND NOT g.autogol)
+               OR (pp.id_equipo = p.id_equipo_local AND g.autogol))) AS goles_visitante
+FROM partido p;
+
+-- Cada partido jugado visto desde cada uno de sus dos equipos: goles a favor (gf) y en contra (gc).
+CREATE VIEW resultado_equipo AS
+SELECT p.id_equipo_local AS id_equipo, r.goles_local AS gf, r.goles_visitante AS gc
+FROM partido p JOIN resultado_partido r ON r.id_partido = p.id_partido
+WHERE p.estado = 'jugado'
+UNION ALL
+SELECT p.id_equipo_visitante, r.goles_visitante, r.goles_local
+FROM partido p JOIN resultado_partido r ON r.id_partido = p.id_partido
+WHERE p.estado = 'jugado';
+
 -- ---------------------------------------------------------------------
 -- 2. USUARIOS DE BASE DE DATOS (permisos diferenciados)
 -- ---------------------------------------------------------------------
@@ -203,6 +228,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.planilla_partido TO 'torn
 GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.gol TO 'torneo_admin'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.tarjeta TO 'torneo_admin'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.sancion_jugador TO 'torneo_admin'@'%';
+GRANT SELECT ON torneo_futbol5.resultado_partido TO 'torneo_admin'@'%';
+GRANT SELECT ON torneo_futbol5.resultado_equipo TO 'torneo_admin'@'%';
 
 -- el planillero solo lee lo necesario y registra planillas, goles y tarjetas
 GRANT SELECT ON torneo_futbol5.torneo TO 'torneo_planillero'@'%';
@@ -213,6 +240,7 @@ GRANT SELECT ON torneo_futbol5.turno TO 'torneo_planillero'@'%';
 GRANT SELECT ON torneo_futbol5.complejo TO 'torneo_planillero'@'%';
 GRANT SELECT, INSERT ON torneo_futbol5.sancion_jugador TO 'torneo_planillero'@'%';  -- sanciones automáticas por tarjeta
 GRANT SELECT ON torneo_futbol5.partido TO 'torneo_planillero'@'%';
+GRANT SELECT ON torneo_futbol5.resultado_partido TO 'torneo_planillero'@'%';
 GRANT UPDATE (estado) ON torneo_futbol5.partido TO 'torneo_planillero'@'%';  -- marcar como jugado
 GRANT SELECT, INSERT, DELETE ON torneo_futbol5.planilla_partido TO 'torneo_planillero'@'%';
 GRANT SELECT, INSERT, DELETE ON torneo_futbol5.gol TO 'torneo_planillero'@'%';
@@ -299,9 +327,9 @@ INSERT INTO equipo (nombre, id_torneo, id_facultad) VALUES
 ('Los Ingenieros', 1, 1), ('Empresariales FC', 1, 2), ('Derecho FC', 1, 3),
 ('Psico Team', 1, 4), ('Salud United', 1, 5), ('Humanas FC', 1, 6);
 
--- cada equipo i recibe los 7 jugadores de la facultad i
+-- cada equipo i recibe los 7 jugadores de la facultad i; la camiseta es el último dígito de la cédula
 INSERT INTO equipo_jugador_torneo (id_equipo, ci_jugador, id_torneo, numero_camiseta)
-SELECT id_facultad, ci, 1, CAST(RIGHT(ci, 1) AS UNSIGNED) FROM jugador WHERE id_facultad <= 6;
+SELECT id_facultad, ci, 1, ci % 10 FROM jugador WHERE id_facultad <= 6;
 
 UPDATE equipo SET ci_capitan = CONCAT('4', id_equipo, '000001') WHERE id_torneo = 1;
 

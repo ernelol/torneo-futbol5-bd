@@ -9,7 +9,7 @@
 <table>
   <tr>{% for columna in filas[0] %}<th>{{ columna }}</th>{% endfor %}</tr>
   {% for fila in filas %}
-  <tr>{% for valor in fila.values() %}<td>{{ valor|etiqueta }}</td>{% endfor %}</tr>
+  <tr>{% for valor in fila.values() %}<td>{{ '—' if valor is none else valor|etiqueta }}</td>{% endfor %}</tr>
   {% endfor %}
 </table>
 {% else %}
