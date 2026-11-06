@@ -2,6 +2,8 @@
 
 Base de Datos 1, Universidad Católica del Uruguay, segundo semestre de 2026.
 
+Autor: Ernesto Santos
+
 Repositorio: https://github.com/ernelol/torneo-futbol5-bd
 
 ## 1. Decisiones de implementación
