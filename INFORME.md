@@ -115,7 +115,7 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 | 1. Primera versión | Modelo de datos, script SQL, usuarios de base de datos, datos de prueba, aplicación Flask y Docker Compose. Pruebas sobre MariaDB. |
 | 2. Revisión contra la letra | Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. |
 | 3. Revisión contra los materiales del curso | Las reglas pasan de triggers a consultas en Python, porque los triggers no están en los materiales. Se usan vistas para los resultados y `FOR UPDATE` para el aislamiento, se quitan funciones de SQL que no figuran en ellos y el capitán pasa a una FK simple hacia `jugador`, más un control en `reglas.py`. Pruebas de las reglas sobre MariaDB. |
-| Pendiente | Prueba con `docker compose up` sobre MySQL 8.4. |
+| 4. Prueba final con Docker | Se levantó el proyecto con `docker compose up` sobre MySQL 8.4. El script carga sin errores, MySQL aplica los `CHECK` y rechaza lo que cada usuario no tiene permitido, y las reglas de la letra y los reportes dan los resultados esperados. |
 
 ## 6. Uso de inteligencia artificial
 Según lo que pide el syllabus de la materia (sección 1.5), se declara que se usó Claude Code (modelo Claude Opus 5.5, de Anthropic)
