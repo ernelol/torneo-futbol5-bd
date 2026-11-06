@@ -120,6 +120,9 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 - **2027, 1.er semestre (en inscripción):** un equipo con 3 jugadores, para probar el ABM de planteles.
 
 ## 5. Bitácora
+El trabajo se hizo en dos partes: los pasos 1 a 3 el 30/10/2026, y los pasos 4 a 7 el 06/11/2026.
+El repositorio de GitHub se creó el 06/11, por eso su historial empieza ese día, con la primera versión ya hecha.
+
 1. **Análisis de la letra.** Se identificaron las tablas pedidas, las reglas de cada etapa del torneo y los reportes. Se decidió empezar por la base de datos, porque de ella depende el resto.
 2. **Primera versión.** Se armó un único script SQL con las tablas, los usuarios y los datos de prueba, con las reglas en triggers. Después se hizo la aplicación con Flask y Docker Compose. Como en ese momento no había MySQL disponible, las pruebas se hicieron sobre MariaDB.
 3. **Primeros errores.** Al entrar como planillero, la lista de partidos fallaba: su usuario no podía leer `complejo`, y se agregó ese permiso. También se comprobó que los reportes funcionaran con `ONLY_FULL_GROUP_BY`, el modo por defecto de MySQL.
