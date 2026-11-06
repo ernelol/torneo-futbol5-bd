@@ -1,13 +1,18 @@
+# Levanta dos contenedores: la base (db) y la aplicación (app).
 services:
   db:
+    # MySQL 8.4 y no 5.7: antes de la versión 8.0.16 MySQL no aplica los CHECK.
     image: mysql:8.4
+    # Juego de caracteres para los acentos (igual que el compose del curso) y hora de Uruguay.
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-time-zone=-03:00
     environment:
       MYSQL_ROOT_PASSWORD: root
     volumes:
+      # Guarda los datos aunque se apague el contenedor. docker compose down -v los borra.
       - mysql_data:/var/lib/mysql
       - ./db:/docker-entrypoint-initdb.d:ro   # ejecuta torneo.sql la primera vez
     ports:
+      # Desde esta máquina se entra por el 3307, por si ya hay otro MySQL en el 3306.
       - "3307:3306"
     healthcheck:
       # por TCP: solo responde cuando terminó de ejecutar el script inicial
@@ -16,12 +21,15 @@ services:
       retries: 30
 
   app:
+    # La imagen de la aplicación se arma con el Dockerfile.
     build: .
     environment:
+      # Dentro de Docker, la base se encuentra por el nombre de su servicio.
       DB_HOST: db
       DB_PORT: 3306
     ports:
       - "5000:5000"
+    # La aplicación arranca recién cuando la base responde.
     depends_on:
       db:
         condition: service_healthy

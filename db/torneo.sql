@@ -5,6 +5,7 @@
 
 SET NAMES utf8mb4;  -- para que los acentos se carguen bien con cualquier cliente
 
+-- Borra la base si ya existe y la crea de nuevo: el script se puede ejecutar varias veces. utf8mb4 permite acentos.
 DROP DATABASE IF EXISTS torneo_futbol5;
 CREATE DATABASE torneo_futbol5 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE torneo_futbol5;
@@ -13,18 +14,22 @@ USE torneo_futbol5;
 -- 1. TABLAS
 -- ---------------------------------------------------------------------
 
+-- Usuarios de la aplicación, con su rol. No confundir con los usuarios de MySQL de la sección 2.
 CREATE TABLE login (
     correo     VARCHAR(100) PRIMARY KEY,
     contrasena VARCHAR(255) NOT NULL,  -- hash, nunca texto plano
     rol        ENUM('administrador', 'planillero') NOT NULL,
+    -- Validación en la base: el correo tiene que tener algo, arroba, algo, punto y algo.
     CHECK (correo LIKE '%_@_%._%')
 );
 
+-- AUTO_INCREMENT: MySQL asigna el número solo.
 CREATE TABLE facultad (
     id_facultad INT AUTO_INCREMENT PRIMARY KEY,
     nombre      VARCHAR(80) NOT NULL UNIQUE
 );
 
+-- La cédula es texto para respetarla tal cual se escribe.
 CREATE TABLE jugador (
     ci               VARCHAR(8) PRIMARY KEY,
     nombre           VARCHAR(50) NOT NULL,
@@ -34,11 +39,13 @@ CREATE TABLE jugador (
     id_facultad      INT NOT NULL,
     tipo             ENUM('grado', 'posgrado', 'docente', 'funcionario') NOT NULL,
     FOREIGN KEY (id_facultad) REFERENCES facultad (id_facultad),
+    -- En LIKE, cada guion bajo representa un carácter. Que sean dígitos lo controlan el formulario y validacion.py.
     CHECK (ci LIKE '_______' OR ci LIKE '________'),  -- 7 u 8 caracteres
     CHECK (email LIKE '%_@_%._%'),
     CHECK (fecha_nacimiento >= '1920-01-01')
 );
 
+-- Cada edición corresponde a un semestre: por eso UNIQUE (anio, semestre).
 CREATE TABLE torneo (
     id_torneo    INT AUTO_INCREMENT PRIMARY KEY,
     nombre       VARCHAR(100) NOT NULL,
@@ -53,19 +60,23 @@ CREATE TABLE torneo (
     CHECK (fecha_fin >= fecha_inicio)
 );
 
+-- Un equipo pertenece a una edición y representa a una facultad.
 CREATE TABLE equipo (
     id_equipo   INT AUTO_INCREMENT PRIMARY KEY,
     nombre      VARCHAR(60) NOT NULL,
     id_torneo   INT NOT NULL,
     id_facultad INT NOT NULL,
+    -- La FK solo garantiza que el capitán sea un jugador. Que sea de este plantel lo controla verificar_capitan en reglas.py.
     ci_capitan  VARCHAR(8) NULL,  -- NULL hasta que el equipo tenga jugadores
     UNIQUE (id_torneo, nombre),
+    -- Hace falta para que otras tablas puedan apuntar a la pareja (id_equipo, id_torneo) con una FK.
     UNIQUE (id_equipo, id_torneo),
     FOREIGN KEY (id_torneo) REFERENCES torneo (id_torneo),
     FOREIGN KEY (id_facultad) REFERENCES facultad (id_facultad),
     FOREIGN KEY (ci_capitan) REFERENCES jugador (ci)
 );
 
+-- El plantel: qué jugadores tiene cada equipo en cada edición.
 CREATE TABLE equipo_jugador_torneo (
     id_equipo       INT NOT NULL,
     ci_jugador      VARCHAR(8) NOT NULL,
@@ -73,13 +84,17 @@ CREATE TABLE equipo_jugador_torneo (
     numero_camiseta TINYINT NOT NULL,
     PRIMARY KEY (id_equipo, ci_jugador, id_torneo),
     UNIQUE (ci_jugador, id_torneo),       -- un jugador, un solo equipo por edición
+    -- Hace falta para la FK de planilla_partido.
     UNIQUE (id_equipo, ci_jugador),
+    -- Dos jugadores del mismo equipo no pueden tener la misma camiseta.
     UNIQUE (id_equipo, numero_camiseta),
+    -- FK de dos columnas: el equipo tiene que ser de ese torneo. Si se borra el equipo, se borra su plantel (CASCADE).
     FOREIGN KEY (id_equipo, id_torneo) REFERENCES equipo (id_equipo, id_torneo) ON DELETE CASCADE,
     FOREIGN KEY (ci_jugador) REFERENCES jugador (ci),
     CHECK (numero_camiseta BETWEEN 1 AND 99)
 );
 
+-- Complejos deportivos. El departamento solo admite los 19 del Uruguay (ENUM).
 CREATE TABLE complejo (
     id_complejo  INT AUTO_INCREMENT PRIMARY KEY,
     nombre       VARCHAR(80) NOT NULL UNIQUE,
@@ -89,6 +104,7 @@ CREATE TABLE complejo (
                       'Salto', 'San José', 'Soriano', 'Tacuarembó', 'Treinta y Tres') NOT NULL
 );
 
+-- Una cancha se identifica por su nombre junto con su complejo: dos complejos pueden tener una Cancha 1.
 CREATE TABLE cancha (
     nombre_cancha VARCHAR(40) NOT NULL,
     id_complejo   INT NOT NULL,
@@ -98,6 +114,7 @@ CREATE TABLE cancha (
     FOREIGN KEY (id_complejo) REFERENCES complejo (id_complejo)
 );
 
+-- Turnos de una hora entre las 18 y las 23. Los dos CHECK lo garantizan.
 CREATE TABLE turno (
     id_turno    TINYINT PRIMARY KEY,
     hora_inicio TIME NOT NULL UNIQUE,
@@ -106,7 +123,9 @@ CREATE TABLE turno (
     CHECK (hora_fin = ADDTIME(hora_inicio, '01:00:00'))
 );
 
+-- numero_fecha es la fecha del torneo (fecha 1, fecha 2...). dia es el día del calendario.
 CREATE TABLE partido (
+    -- AUTO_INCREMENT: MySQL asigna el número solo.
     id_partido          INT AUTO_INCREMENT,
     id_torneo           INT NOT NULL,
     numero_fecha        TINYINT NOT NULL,
@@ -123,11 +142,14 @@ CREATE TABLE partido (
     FOREIGN KEY (id_equipo_local, id_torneo) REFERENCES equipo (id_equipo, id_torneo),
     FOREIGN KEY (id_equipo_visitante, id_torneo) REFERENCES equipo (id_equipo, id_torneo),
     FOREIGN KEY (id_turno) REFERENCES turno (id_turno),
+    -- FK de dos columnas, porque la clave de cancha tiene dos columnas.
     FOREIGN KEY (nombre_cancha, id_complejo) REFERENCES cancha (nombre_cancha, id_complejo),
+    -- Un equipo no puede enfrentarse a sí mismo.
     CHECK (id_equipo_local <> id_equipo_visitante),
     CHECK (numero_fecha >= 1)
 );
 
+-- Qué jugadores participaron de cada partido y con qué equipo.
 CREATE TABLE planilla_partido (
     id_partido INT NOT NULL,
     ci_jugador VARCHAR(8) NOT NULL,
@@ -139,6 +161,7 @@ CREATE TABLE planilla_partido (
 );
 
 -- goles y tarjetas apuntan a la planilla: solo puede convertir o ser amonestado quien figura en ella
+-- autogol indica que el gol suma para el equipo rival.
 CREATE TABLE gol (
     id_gol     INT AUTO_INCREMENT PRIMARY KEY,
     id_partido INT NOT NULL,
@@ -159,6 +182,7 @@ CREATE TABLE tarjeta (
     CHECK (minuto BETWEEN 0 AND 60)
 );
 
+-- La suspensión abarca cantidad_fechas fechas, a partir de numero_fecha_inicio.
 CREATE TABLE sancion_jugador (
     id_sancion          INT AUTO_INCREMENT PRIMARY KEY,
     ci_jugador          VARCHAR(8) NOT NULL,
@@ -168,13 +192,17 @@ CREATE TABLE sancion_jugador (
     cantidad_fechas     TINYINT NOT NULL DEFAULT 1,
     -- tarjeta que originó la sanción automática (NULL en las disciplinarias)
     id_tarjeta          INT NULL UNIQUE,
+    -- Solo se puede sancionar a un jugador inscripto en ese torneo.
     FOREIGN KEY (ci_jugador, id_torneo) REFERENCES equipo_jugador_torneo (ci_jugador, id_torneo),
+    -- Si se borra la tarjeta, se borra sola la sanción que generó (CASCADE).
     FOREIGN KEY (id_tarjeta) REFERENCES tarjeta (id_tarjeta) ON DELETE CASCADE,
     CHECK (numero_fecha_inicio >= 1),
     CHECK (cantidad_fechas BETWEEN 1 AND 20)
 );
 
 -- El resultado no se guarda: se calcula a partir de los goles. Un autogol suma para el rival.
+-- Una vista es una tabla virtual: se calcula cada vez que se consulta.
+-- Cada subconsulta cuenta los goles de un equipo: los de sus jugadores, más los autogoles de los rivales.
 CREATE VIEW resultado_partido AS
 SELECT p.id_partido,
        (SELECT COUNT(*)
@@ -190,6 +218,8 @@ SELECT p.id_partido,
 FROM partido p;
 
 -- Cada partido jugado visto desde cada uno de sus dos equipos: goles a favor (gf) y en contra (gc).
+-- Con UNION ALL juntamos dos consultas: una mira cada partido desde el local y la otra desde el visitante.
+-- Así la tabla de posiciones trata igual a los dos equipos.
 CREATE VIEW resultado_equipo AS
 SELECT p.id_equipo_local AS id_equipo, r.goles_local AS gf, r.goles_visitante AS gc
 FROM partido p JOIN resultado_partido r ON r.id_partido = p.id_partido
@@ -203,6 +233,8 @@ WHERE p.estado = 'jugado';
 -- 2. USUARIOS DE BASE DE DATOS (permisos diferenciados)
 -- ---------------------------------------------------------------------
 
+-- La aplicación no usa root. Cada rol tiene su usuario de MySQL con los permisos justos.
+-- Arroba y porcentaje significa que puede conectarse desde cualquier máquina, algo necesario con Docker.
 DROP USER IF EXISTS 'torneo_login'@'%', 'torneo_admin'@'%', 'torneo_planillero'@'%';
 CREATE USER 'torneo_login'@'%' IDENTIFIED BY 'login_2026';
 CREATE USER 'torneo_admin'@'%' IDENTIFIED BY 'admin_2026';
@@ -212,6 +244,7 @@ CREATE USER 'torneo_planillero'@'%' IDENTIFIED BY 'planillero_2026';
 GRANT SELECT ON torneo_futbol5.login TO 'torneo_login'@'%';
 
 -- el administrador gestiona todo (excepto la tabla de usuarios de la aplicación)
+-- turno es solo lectura porque son datos fijos.
 GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.facultad TO 'torneo_admin'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.jugador TO 'torneo_admin'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON torneo_futbol5.torneo TO 'torneo_admin'@'%';
@@ -229,6 +262,8 @@ GRANT SELECT ON torneo_futbol5.resultado_partido TO 'torneo_admin'@'%';
 GRANT SELECT ON torneo_futbol5.resultado_equipo TO 'torneo_admin'@'%';
 
 -- el planillero solo lee lo necesario y registra planillas, goles y tarjetas
+-- No puede leer login ni canchas, ni modificar equipos o jugadores.
+-- De sancion_jugador solo tiene lectura y alta. Si intenta otra cosa, MySQL lo rechaza.
 GRANT SELECT ON torneo_futbol5.torneo TO 'torneo_planillero'@'%';
 GRANT SELECT ON torneo_futbol5.equipo TO 'torneo_planillero'@'%';
 GRANT SELECT ON torneo_futbol5.jugador TO 'torneo_planillero'@'%';
@@ -238,6 +273,7 @@ GRANT SELECT ON torneo_futbol5.complejo TO 'torneo_planillero'@'%';
 GRANT SELECT, INSERT ON torneo_futbol5.sancion_jugador TO 'torneo_planillero'@'%';  -- sanciones automáticas por tarjeta
 GRANT SELECT ON torneo_futbol5.partido TO 'torneo_planillero'@'%';
 GRANT SELECT ON torneo_futbol5.resultado_partido TO 'torneo_planillero'@'%';
+-- Permiso sobre una sola columna: de partido, solo puede cambiar el estado.
 GRANT UPDATE (estado) ON torneo_futbol5.partido TO 'torneo_planillero'@'%';  -- marcar como jugado
 GRANT SELECT, INSERT, DELETE ON torneo_futbol5.planilla_partido TO 'torneo_planillero'@'%';
 GRANT SELECT, INSERT, DELETE ON torneo_futbol5.gol TO 'torneo_planillero'@'%';
@@ -248,6 +284,7 @@ GRANT SELECT, INSERT, DELETE ON torneo_futbol5.tarjeta TO 'torneo_planillero'@'%
 -- ---------------------------------------------------------------------
 
 -- contraseñas: admin123 / planillero123
+-- Lo que se guarda es el hash de cada contraseña, generado con werkzeug.
 INSERT INTO login VALUES
 ('admin@ucu.edu.uy', 'scrypt:32768:8:1$MaTP8vdaT7el8Lj6$860f59ecf66a0d3cf8151bc882d0b3aeaeefe78eaca9cfc1a1337db09639166204d2f6322ae9d92463fe5a5d84eeec7ef8ac8995c5db02a7453b14540990649c', 'administrador'),
 ('planillero@ucu.edu.uy', 'scrypt:32768:8:1$yjUyiVZJM5bxtRKq$4261aea9dd820127c092f792a19c7c9abc84ffc0927f0f47c1eb24c9452d540010ac8c4fe571bdc282e01deda118cfa8b14152d38246f0a40b5276bcc45bc8e3', 'planillero');
@@ -256,6 +293,7 @@ INSERT INTO facultad (nombre) VALUES
 ('Ingeniería y Tecnologías'), ('Ciencias Empresariales'), ('Derecho'),
 ('Psicología'), ('Ciencias de la Salud'), ('Ciencias Humanas'), ('Enfermería');
 
+-- Los 5 turnos de la letra.
 INSERT INTO turno VALUES
 (1, '18:00', '19:00'), (2, '19:00', '20:00'), (3, '20:00', '21:00'),
 (4, '21:00', '22:00'), (5, '22:00', '23:00');
@@ -325,12 +363,15 @@ INSERT INTO equipo (nombre, id_torneo, id_facultad) VALUES
 ('Psico Team', 1, 4), ('Salud United', 1, 5), ('Humanas FC', 1, 6);
 
 -- cada equipo i recibe los 7 jugadores de la facultad i; la camiseta es el último dígito de la cédula
+-- ci % 10 es el resto de dividir entre 10, o sea el último dígito.
 INSERT INTO equipo_jugador_torneo (id_equipo, ci_jugador, id_torneo, numero_camiseta)
 SELECT id_facultad, ci, 1, ci % 10 FROM jugador WHERE id_facultad <= 6;
 
+-- El capitán se asigna después, porque recién ahora existe el plantel.
 UPDATE equipo SET ci_capitan = CONCAT('4', id_equipo, '000001') WHERE id_torneo = 1;
 
 -- Fixture (todos contra todos en 5 fechas). Fechas 1-3 jugadas, 4-5 futuras.
+-- El número de cada partido, al final de la línea, es el id que le va a asignar AUTO_INCREMENT.
 INSERT INTO partido (id_torneo, numero_fecha, id_equipo_local, id_equipo_visitante, dia, id_turno, nombre_cancha, id_complejo, estado) VALUES
 (1, 1, 1, 2, '2026-09-15', 1, 'Cancha 1', 1, 'jugado'),      -- 1
 (1, 1, 3, 4, '2026-09-15', 2, 'Cancha 1', 1, 'jugado'),      -- 2
@@ -379,6 +420,7 @@ INSERT INTO tarjeta (id_tarjeta, id_partido, ci_jugador, minuto, color) VALUES
 (7, 10, '45000001', 47, 'roja'),
 (8, 8, '44000001', 33, 'amarilla');
 
+-- Las sanciones automáticas de las tarjetas 1, 6 y 7, y una disciplinaria de 2 fechas (sin tarjeta).
 INSERT INTO sancion_jugador (ci_jugador, id_torneo, motivo, numero_fecha_inicio, cantidad_fechas, id_tarjeta) VALUES
 ('41000002', 1, 'roja', 2, 1, 1),
 ('42000003', 1, 'acumulacion_amarillas', 4, 1, 6),
