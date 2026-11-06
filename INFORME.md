@@ -58,8 +58,8 @@ Por ejemplo, una tarjeta y la sanción que genera se guardan juntas o no se guar
 
 - **El resultado no se guarda: se calcula** con una subconsulta a partir de los goles
   (el autogol suma para el rival). Así es imposible que el resultado y los goles no coincidan.
-- **Clave primaria de `partido`: solo `id_partido`.** La letra propone `(id_partido, id_torneo)`, pero `id_partido`
-  ya es único por sí solo. `id_torneo` sigue en la tabla y participa en las FK compuestas hacia los equipos.
+- **`partido` tiene además `UNIQUE (id_partido)`.** La clave primaria es `(id_partido, id_torneo)`, como pide la letra, pero `planilla_partido`
+  referencia solo a `id_partido`, y una clave foránea necesita apuntar a una clave completa.
 - **`sancion_jugador.id_tarjeta`** (nueva columna): vincula una sanción automática con la tarjeta que la generó.
   Si se corrige la planilla y se borra la tarjeta, la sanción se borra sola (`ON DELETE CASCADE`).
 - **Claves únicas adicionales:** `torneo (anio, semestre)`, `equipo (id_torneo, nombre)`, camiseta única por equipo,
@@ -75,6 +75,7 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 **Limitaciones conocidas (se dejaron así por simplicidad):**
 - Las reglas de `reglas.py` se aplican al usar la aplicación: quien modifique la base directamente con un usuario
   con permisos puede saltearlas. Las claves, los `CHECK` y los permisos rigen siempre.
+- Si se cambian los equipos de un partido que ya tiene planilla cargada, hay que quitar y volver a cargar esa planilla.
 - Dos administradores que programen a la vez la misma cancha podrían pasar el control al mismo tiempo.
   Se consideró aceptable por la cantidad de usuarios del sistema.
 - Si se corrige una planilla borrando una amarilla anterior a la tercera, la suspensión por acumulación no se recalcula:
@@ -101,7 +102,7 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 | Fecha | Trabajo realizado |
 |---|---|
 | 30/10/2026 | Modelo de datos, script SQL con triggers, usuarios de BD, datos de prueba, aplicación Flask y Docker Compose, con asistencia de Claude Code (IA). Pruebas sobre MariaDB. |
-| 06/11/2026 | Revisión contra la letra y el temario del curso, con asistencia de Claude Code. Las reglas pasan de triggers a consultas en Python, porque triggers, procedimientos y vistas no figuran en el temario. Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura y se corrige el porcentaje de partidos. Pruebas de las reglas sobre MariaDB. |
+| 06/11/2026 | Revisión contra la letra y el temario del curso, con asistencia de Claude Code. Las reglas pasan de triggers a consultas en Python, porque triggers, procedimientos y vistas no figuran en el temario. Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. Pruebas de las reglas sobre MariaDB. |
 | _completar_ | _Prueba con `docker compose up` sobre MySQL 8.4._ |
 
 ## 6. Bibliografía

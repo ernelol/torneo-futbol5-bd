@@ -110,7 +110,7 @@ CREATE TABLE turno (
 );
 
 CREATE TABLE partido (
-    id_partido          INT AUTO_INCREMENT PRIMARY KEY,
+    id_partido          INT AUTO_INCREMENT,
     id_torneo           INT NOT NULL,
     numero_fecha        TINYINT NOT NULL,
     id_equipo_local     INT NOT NULL,
@@ -120,6 +120,8 @@ CREATE TABLE partido (
     nombre_cancha       VARCHAR(40) NOT NULL,
     id_complejo         INT NOT NULL,
     estado              ENUM('programado', 'jugado', 'postergado', 'cancelado') NOT NULL DEFAULT 'programado',
+    PRIMARY KEY (id_partido, id_torneo),
+    UNIQUE (id_partido),  -- planilla_partido referencia solo a id_partido
     -- las FK compuestas garantizan que ambos equipos sean de la misma edición del partido
     FOREIGN KEY (id_equipo_local, id_torneo) REFERENCES equipo (id_equipo, id_torneo),
     FOREIGN KEY (id_equipo_visitante, id_torneo) REFERENCES equipo (id_equipo, id_torneo),

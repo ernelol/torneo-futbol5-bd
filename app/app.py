@@ -20,7 +20,11 @@ from reportes import REPORTES, RESULTADOS
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "clave-de-desarrollo")
 app.teardown_appcontext(db.cerrar)
-app.jinja_env.filters["etiqueta"] = lambda valor: ETIQUETAS.get(valor, valor)
+
+
+@app.template_filter("etiqueta")
+def etiqueta(valor):
+    return ETIQUETAS.get(valor, valor)
 
 
 @app.context_processor
@@ -64,8 +68,10 @@ def volver():
 def torneos_y_elegido() -> tuple[list[dict], dict | None]:
     """Lista de torneos y el elegido en ?torneo=; por defecto, el que está en curso."""
     torneos = db.consultar("SELECT * FROM torneo ORDER BY estado = 'en_curso' DESC, anio DESC, semestre DESC")
-    elegido = next((t for t in torneos if str(t["id_torneo"]) == request.args.get("torneo")), None)
-    return torneos, elegido or (torneos[0] if torneos else None)
+    for torneo in torneos:
+        if str(torneo["id_torneo"]) == request.args.get("torneo"):
+            return torneos, torneo
+    return torneos, torneos[0] if torneos else None
 
 
 def ids(filas: list[dict], columna: str) -> set[str]:
@@ -78,10 +84,15 @@ def ids(filas: list[dict], columna: str) -> set[str]:
 def login():
     if request.method == "POST":
         session.clear()
-        usuario = db.consultar_uno("SELECT contrasena, rol FROM login WHERE correo = %s",
-                                   (request.form.get("correo", "").strip(),))
-        if usuario and check_password_hash(usuario["contrasena"], request.form.get("contrasena", "")):
-            session["correo"] = request.form["correo"].strip()
+        try:
+            correo = v.email(request.form, "correo")
+            contrasena = v.texto(request.form, "contrasena", 255)
+        except ValueError as error:
+            flash(str(error), "error")
+            return render_template("login.html")
+        usuario = db.consultar_uno("SELECT contrasena, rol FROM login WHERE correo = %s", (correo,))
+        if usuario and check_password_hash(usuario["contrasena"], contrasena):
+            session["correo"] = correo
             session["rol"] = usuario["rol"]
             return redirect(url_for("inicio"))
         flash("Correo o contraseña incorrectos.", "error")
@@ -115,17 +126,18 @@ def torneos():
 def guardar_torneo():
     def accion():
         f = request.form
-        datos = (v.texto(f, "nombre", 100), v.entero(f, "anio", 2000, 2100), v.entero(f, "semestre", 1, 2),
-                 v.fecha(f, "fecha_inicio"), v.fecha(f, "fecha_fin"), v.opcion(f, "estado", ESTADOS_TORNEO))
-        if datos[4] < datos[3]:
+        nombre, anio, semestre = v.texto(f, "nombre", 100), v.entero(f, "anio", 2000, 2100), v.entero(f, "semestre", 1, 2)
+        inicio, fin, estado = v.fecha(f, "fecha_inicio"), v.fecha(f, "fecha_fin"), v.opcion(f, "estado", ESTADOS_TORNEO)
+        if fin < inicio:
             raise ValueError("La fecha de fin no puede ser anterior a la de inicio.")
         if f.get("id_torneo"):
-            reglas.verificar_cambio_de_estado(f["id_torneo"], datos[5])
+            reglas.verificar_cambio_de_estado(f["id_torneo"], estado)
             db.ejecutar("""UPDATE torneo SET nombre = %s, anio = %s, semestre = %s, fecha_inicio = %s,
-                           fecha_fin = %s, estado = %s WHERE id_torneo = %s""", (*datos, f["id_torneo"]))
+                           fecha_fin = %s, estado = %s WHERE id_torneo = %s""",
+                        (nombre, anio, semestre, inicio, fin, estado, f["id_torneo"]))
         else:
             db.ejecutar("""INSERT INTO torneo (nombre, anio, semestre, fecha_inicio, fecha_fin, estado)
-                           VALUES (%s, %s, %s, %s, %s, %s)""", datos)
+                           VALUES (%s, %s, %s, %s, %s, %s)""", (nombre, anio, semestre, inicio, fin, estado))
     realizar(accion, "Torneo guardado.")
     return redirect(url_for("torneos"))
 
@@ -133,7 +145,9 @@ def guardar_torneo():
 @app.post("/torneos/<int:id_torneo>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_torneo(id_torneo):
-    realizar(lambda: db.ejecutar("DELETE FROM torneo WHERE id_torneo = %s", (id_torneo,)), "Torneo eliminado.")
+    def accion():
+        db.ejecutar("DELETE FROM torneo WHERE id_torneo = %s", (id_torneo,))
+    realizar(accion, "Torneo eliminado.")
     return redirect(url_for("torneos"))
 
 
@@ -155,15 +169,18 @@ def guardar_jugador():
     def accion():
         f = request.form
         facultades = ids(db.consultar("SELECT id_facultad FROM facultad"), "id_facultad")
-        datos = (v.texto(f, "nombre", 50), v.texto(f, "apellido", 50), v.email(f), v.fecha_pasada(f, "fecha_nacimiento"),
-                 v.opcion(f, "id_facultad", facultades), v.opcion(f, "tipo", TIPOS_JUGADOR))
+        nombre, apellido, email = v.texto(f, "nombre", 50), v.texto(f, "apellido", 50), v.email(f)
+        nacimiento = v.fecha_pasada(f, "fecha_nacimiento")
+        facultad, tipo = v.opcion(f, "id_facultad", facultades), v.opcion(f, "tipo", TIPOS_JUGADOR)
         if f.get("original"):
-            reglas.verificar_cambio_de_jugador(f["original"], datos[4], datos[5])
+            reglas.verificar_cambio_de_jugador(f["original"], facultad, tipo)
             db.ejecutar("""UPDATE jugador SET nombre = %s, apellido = %s, email = %s, fecha_nacimiento = %s,
-                           id_facultad = %s, tipo = %s WHERE ci = %s""", (*datos, f["original"]))
+                           id_facultad = %s, tipo = %s WHERE ci = %s""",
+                        (nombre, apellido, email, nacimiento, facultad, tipo, f["original"]))
         else:
-            db.ejecutar("""INSERT INTO jugador (nombre, apellido, email, fecha_nacimiento, id_facultad, tipo, ci)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s)""", (*datos, v.ci(f)))
+            db.ejecutar("""INSERT INTO jugador (ci, nombre, apellido, email, fecha_nacimiento, id_facultad, tipo)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                        (v.ci(f), nombre, apellido, email, nacimiento, facultad, tipo))
     realizar(accion, "Jugador guardado.")
     return redirect(url_for("jugadores"))
 
@@ -171,7 +188,9 @@ def guardar_jugador():
 @app.post("/jugadores/<ci>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_jugador(ci):
-    realizar(lambda: db.ejecutar("DELETE FROM jugador WHERE ci = %s", (ci,)), "Jugador eliminado.")
+    def accion():
+        db.ejecutar("DELETE FROM jugador WHERE ci = %s", (ci,))
+    realizar(accion, "Jugador eliminado.")
     return redirect(url_for("jugadores"))
 
 
@@ -185,7 +204,7 @@ def equipos():
                                    (SELECT COUNT(*) FROM equipo_jugador_torneo ejt WHERE ejt.id_equipo = e.id_equipo) AS jugadores
                             FROM equipo e JOIN facultad f ON f.id_facultad = e.id_facultad
                             LEFT JOIN jugador j ON j.ci = e.ci_capitan
-                            WHERE e.id_torneo = %s ORDER BY e.nombre""", (torneo and torneo["id_torneo"],))
+                            WHERE e.id_torneo = %s ORDER BY e.nombre""", (torneo["id_torneo"] if torneo else None,))
     editando = db.consultar_uno("SELECT * FROM equipo WHERE id_equipo = %s", (request.args.get("editar"),))
     plantel = plantel_de(editando["id_equipo"]) if editando else []
     return render_template("equipos.html", torneos=torneos, torneo=torneo, equipos=lista, editando=editando,
@@ -264,8 +283,10 @@ def agregar_al_plantel(id_equipo):
 @requiere(ROL_ADMIN)
 def quitar_del_plantel(id_equipo, ci):
     def accion():
-        equipo = db.consultar_uno("SELECT id_torneo FROM equipo WHERE id_equipo = %s", (id_equipo,))
+        equipo = db.consultar_uno("SELECT id_torneo, ci_capitan FROM equipo WHERE id_equipo = %s", (id_equipo,))
         reglas.verificar_inscripcion(equipo["id_torneo"])
+        if equipo["ci_capitan"] == ci:
+            raise ValueError("Es el capitán del equipo: elija otro capitán antes de quitarlo.")
         db.ejecutar("DELETE FROM equipo_jugador_torneo WHERE id_equipo = %s AND ci_jugador = %s", (id_equipo, ci))
     realizar(accion, "Jugador quitado del plantel.")
     return volver()
@@ -288,12 +309,14 @@ def complejos():
 def guardar_complejo():
     def accion():
         f = request.form
-        datos = (v.texto(f, "nombre", 80), v.texto(f, "direccion", 120), v.opcion(f, "departamento", DEPARTAMENTOS))
+        nombre, direccion = v.texto(f, "nombre", 80), v.texto(f, "direccion", 120)
+        departamento = v.opcion(f, "departamento", DEPARTAMENTOS)
         if f.get("id_complejo"):
             db.ejecutar("UPDATE complejo SET nombre = %s, direccion = %s, departamento = %s WHERE id_complejo = %s",
-                        (*datos, f["id_complejo"]))
+                        (nombre, direccion, departamento, f["id_complejo"]))
         else:
-            db.ejecutar("INSERT INTO complejo (nombre, direccion, departamento) VALUES (%s, %s, %s)", datos)
+            db.ejecutar("INSERT INTO complejo (nombre, direccion, departamento) VALUES (%s, %s, %s)",
+                        (nombre, direccion, departamento))
     realizar(accion, "Complejo guardado.")
     return redirect(url_for("complejos"))
 
@@ -301,7 +324,9 @@ def guardar_complejo():
 @app.post("/complejos/<int:id_complejo>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_complejo(id_complejo):
-    realizar(lambda: db.ejecutar("DELETE FROM complejo WHERE id_complejo = %s", (id_complejo,)), "Complejo eliminado.")
+    def accion():
+        db.ejecutar("DELETE FROM complejo WHERE id_complejo = %s", (id_complejo,))
+    realizar(accion, "Complejo eliminado.")
     return redirect(url_for("complejos"))
 
 
@@ -327,8 +352,10 @@ def guardar_cancha():
 @app.post("/canchas/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_cancha():
-    realizar(lambda: db.ejecutar("DELETE FROM cancha WHERE nombre_cancha = %s AND id_complejo = %s",
-                                 (request.form["nombre_cancha"], request.form["id_complejo"])), "Cancha eliminada.")
+    def accion():
+        db.ejecutar("DELETE FROM cancha WHERE nombre_cancha = %s AND id_complejo = %s",
+                    (request.form["nombre_cancha"], request.form["id_complejo"]))
+    realizar(accion, "Cancha eliminada.")
     return redirect(url_for("complejos"))
 
 
@@ -338,7 +365,7 @@ def eliminar_cancha():
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def partidos():
     torneos, torneo = torneos_y_elegido()
-    id_torneo = torneo and torneo["id_torneo"]
+    id_torneo = torneo["id_torneo"] if torneo else None
     lista = db.consultar(f"""SELECT p.*, el.nombre AS local, ev.nombre AS visitante, co.nombre AS complejo,
                                    TIME_FORMAT(t.hora_inicio, '%%H:%%i') AS hora, r.goles_local, r.goles_visitante
                             FROM partido p
@@ -348,11 +375,12 @@ def partidos():
                             JOIN complejo co ON co.id_complejo = p.id_complejo
                             JOIN {RESULTADOS} r ON r.id_partido = p.id_partido
                             WHERE p.id_torneo = %s ORDER BY p.numero_fecha, p.dia, t.hora_inicio""", (id_torneo,))
-    datos = dict(torneos=torneos, torneo=torneo, partidos=lista)
-    if session["rol"] == ROL_ADMIN:
-        datos |= opciones_de_partido(id_torneo)
-        datos["editando"] = db.consultar_uno("SELECT * FROM partido WHERE id_partido = %s", (request.args.get("editar"),))
-    return render_template("partidos.html", **datos)
+    opciones, editando = None, None
+    if session["rol"] == ROL_ADMIN:  # el formulario es solo para el administrador
+        opciones = opciones_de_partido(id_torneo)
+        editando = db.consultar_uno("SELECT * FROM partido WHERE id_partido = %s", (request.args.get("editar"),))
+    return render_template("partidos.html", torneos=torneos, torneo=torneo, partidos=lista,
+                           opciones=opciones, editando=editando)
 
 
 def opciones_de_partido(id_torneo) -> dict:
@@ -374,26 +402,34 @@ def guardar_partido():
         equipos_validos = ids(opciones["equipos"], "id_equipo")
         canchas_validas = {f"{c['id_complejo']}|{c['nombre_cancha']}" for c in opciones["canchas"]}
         id_complejo, nombre_cancha = v.opcion(f, "cancha", canchas_validas).split("|", 1)
-        datos = (v.entero(f, "numero_fecha", 1, 50), v.opcion(f, "id_equipo_local", equipos_validos),
-                 v.opcion(f, "id_equipo_visitante", equipos_validos), v.fecha(f, "dia"),
-                 v.opcion(f, "id_turno", ids(opciones["turnos"], "id_turno")), nombre_cancha, id_complejo,
-                 v.opcion(f, "estado", ESTADOS_PARTIDO))
-        if datos[1] == datos[2]:
+        partido = {
+            "id_partido": f.get("id_partido"),
+            "id_torneo": f["id_torneo"],
+            "numero_fecha": v.entero(f, "numero_fecha", 1, 50),
+            "id_equipo_local": v.opcion(f, "id_equipo_local", equipos_validos),
+            "id_equipo_visitante": v.opcion(f, "id_equipo_visitante", equipos_validos),
+            "dia": v.fecha(f, "dia"),
+            "id_turno": v.opcion(f, "id_turno", ids(opciones["turnos"], "id_turno")),
+            "nombre_cancha": nombre_cancha,
+            "id_complejo": id_complejo,
+            "estado": v.opcion(f, "estado", ESTADOS_PARTIDO),
+        }
+        if partido["id_equipo_local"] == partido["id_equipo_visitante"]:
             raise ValueError("Un equipo no puede enfrentarse a sí mismo.")
-        if f.get("id_partido"):
-            reglas.verificar_partido_no_jugado(f["id_partido"])
-        reglas.verificar_partido(dict(id_partido=f.get("id_partido"), id_torneo=f["id_torneo"], numero_fecha=datos[0],
-                                      id_equipo_local=datos[1], id_equipo_visitante=datos[2], dia=datos[3],
-                                      id_turno=datos[4], nombre_cancha=nombre_cancha, id_complejo=id_complejo,
-                                      estado=datos[7]))
-        if f.get("id_partido"):
-            db.ejecutar("""UPDATE partido SET numero_fecha = %s, id_equipo_local = %s, id_equipo_visitante = %s,
-                           dia = %s, id_turno = %s, nombre_cancha = %s, id_complejo = %s, estado = %s
-                           WHERE id_partido = %s""", (*datos, f["id_partido"]))
+        if partido["id_partido"]:
+            reglas.verificar_partido_no_jugado(partido["id_partido"])
+        reglas.verificar_partido(partido)
+        # %(columna)s toma cada valor del diccionario partido
+        if partido["id_partido"]:
+            db.ejecutar("""UPDATE partido SET numero_fecha = %(numero_fecha)s, id_equipo_local = %(id_equipo_local)s,
+                           id_equipo_visitante = %(id_equipo_visitante)s, dia = %(dia)s, id_turno = %(id_turno)s,
+                           nombre_cancha = %(nombre_cancha)s, id_complejo = %(id_complejo)s, estado = %(estado)s
+                           WHERE id_partido = %(id_partido)s""", partido)
         else:
-            db.ejecutar("""INSERT INTO partido (numero_fecha, id_equipo_local, id_equipo_visitante, dia, id_turno,
-                           nombre_cancha, id_complejo, estado, id_torneo) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                        (*datos, f["id_torneo"]))
+            db.ejecutar("""INSERT INTO partido (id_torneo, numero_fecha, id_equipo_local, id_equipo_visitante, dia,
+                           id_turno, nombre_cancha, id_complejo, estado)
+                           VALUES (%(id_torneo)s, %(numero_fecha)s, %(id_equipo_local)s, %(id_equipo_visitante)s,
+                                   %(dia)s, %(id_turno)s, %(nombre_cancha)s, %(id_complejo)s, %(estado)s)""", partido)
     realizar(accion, "Partido guardado.")
     return volver()
 
@@ -518,7 +554,8 @@ def marcar_jugado(id_partido):
     def accion():
         partido = db.consultar_uno("SELECT * FROM partido WHERE id_partido = %s", (id_partido,))
         reglas.verificar_partido_no_jugado(id_partido)
-        reglas.verificar_partido(partido | {"estado": ESTADO_JUGADO})
+        partido["estado"] = ESTADO_JUGADO
+        reglas.verificar_partido(partido)
         db.ejecutar("UPDATE partido SET estado = %s WHERE id_partido = %s", (ESTADO_JUGADO, id_partido))
     realizar(accion, "Partido marcado como jugado.")
     return volver()
@@ -530,7 +567,7 @@ def marcar_jugado(id_partido):
 @requiere(ROL_ADMIN)
 def sanciones():
     torneos, torneo = torneos_y_elegido()
-    id_torneo = torneo and torneo["id_torneo"]
+    id_torneo = torneo["id_torneo"] if torneo else None
     lista = db.consultar("""SELECT s.*, j.nombre, j.apellido, e.nombre AS equipo FROM sancion_jugador s
                             JOIN jugador j ON j.ci = s.ci_jugador
                             JOIN equipo_jugador_torneo ejt ON ejt.ci_jugador = s.ci_jugador AND ejt.id_torneo = s.id_torneo
@@ -552,15 +589,15 @@ def jugadores_del_torneo(id_torneo) -> list[dict]:
 def guardar_sancion():
     def accion():
         f = request.form
-        datos = (v.opcion(f, "ci_jugador", ids(jugadores_del_torneo(f.get("id_torneo")), "ci")),
-                 v.opcion(f, "motivo", MOTIVOS_SANCION), v.entero(f, "numero_fecha_inicio", 1, 50),
-                 v.entero(f, "cantidad_fechas", 1, 20))
+        ci = v.opcion(f, "ci_jugador", ids(jugadores_del_torneo(f.get("id_torneo")), "ci"))
+        motivo = v.opcion(f, "motivo", MOTIVOS_SANCION)
+        inicio, cantidad = v.entero(f, "numero_fecha_inicio", 1, 50), v.entero(f, "cantidad_fechas", 1, 20)
         if f.get("id_sancion"):
             db.ejecutar("""UPDATE sancion_jugador SET ci_jugador = %s, motivo = %s, numero_fecha_inicio = %s,
-                           cantidad_fechas = %s WHERE id_sancion = %s""", (*datos, f["id_sancion"]))
+                           cantidad_fechas = %s WHERE id_sancion = %s""", (ci, motivo, inicio, cantidad, f["id_sancion"]))
         else:
             db.ejecutar("""INSERT INTO sancion_jugador (ci_jugador, motivo, numero_fecha_inicio, cantidad_fechas, id_torneo)
-                           VALUES (%s, %s, %s, %s, %s)""", (*datos, f["id_torneo"]))
+                           VALUES (%s, %s, %s, %s, %s)""", (ci, motivo, inicio, cantidad, f["id_torneo"]))
     realizar(accion, "Sanción guardada.")
     return volver()
 
@@ -568,8 +605,9 @@ def guardar_sancion():
 @app.post("/sanciones/<int:id_sancion>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_sancion(id_sancion):
-    realizar(lambda: db.ejecutar("DELETE FROM sancion_jugador WHERE id_sancion = %s", (id_sancion,)),
-             "Sanción eliminada.")
+    def accion():
+        db.ejecutar("DELETE FROM sancion_jugador WHERE id_sancion = %s", (id_sancion,))
+    realizar(accion, "Sanción eliminada.")
     return volver()
 
 
@@ -579,7 +617,7 @@ def eliminar_sancion(id_sancion):
 @requiere(ROL_ADMIN)
 def reportes():
     torneos, torneo = torneos_y_elegido()
-    parametros = {"torneo": torneo and torneo["id_torneo"]}
+    parametros = {"torneo": torneo["id_torneo"] if torneo else None}
     resultados = [(reporte.titulo, db.consultar(reporte.sql, parametros)) for reporte in REPORTES]
     return render_template("reportes.html", torneos=torneos, torneo=torneo, resultados=resultados)
 

@@ -11,23 +11,23 @@
   <label>Fecha n.º <input type="number" name="numero_fecha" required min="1" max="50" value="{{ editando.numero_fecha if editando }}"></label>
   <label>Local
     <select name="id_equipo_local" required>
-      {% for e in equipos %}<option value="{{ e.id_equipo }}" {{ 'selected' if editando and editando.id_equipo_local == e.id_equipo }}>{{ e.nombre }}</option>{% endfor %}
+      {% for e in opciones.equipos %}<option value="{{ e.id_equipo }}" {{ 'selected' if editando and editando.id_equipo_local == e.id_equipo }}>{{ e.nombre }}</option>{% endfor %}
     </select>
   </label>
   <label>Visitante
     <select name="id_equipo_visitante" required>
-      {% for e in equipos %}<option value="{{ e.id_equipo }}" {{ 'selected' if editando and editando.id_equipo_visitante == e.id_equipo }}>{{ e.nombre }}</option>{% endfor %}
+      {% for e in opciones.equipos %}<option value="{{ e.id_equipo }}" {{ 'selected' if editando and editando.id_equipo_visitante == e.id_equipo }}>{{ e.nombre }}</option>{% endfor %}
     </select>
   </label>
   <label>Día <input type="date" name="dia" required value="{{ editando.dia if editando }}"></label>
   <label>Turno
     <select name="id_turno" required>
-      {% for t in turnos %}<option value="{{ t.id_turno }}" {{ 'selected' if editando and editando.id_turno == t.id_turno }}>{{ t.horario }}</option>{% endfor %}
+      {% for t in opciones.turnos %}<option value="{{ t.id_turno }}" {{ 'selected' if editando and editando.id_turno == t.id_turno }}>{{ t.horario }}</option>{% endfor %}
     </select>
   </label>
   <label>Cancha
     <select name="cancha" required>
-      {% for c in canchas %}<option value="{{ c.id_complejo }}|{{ c.nombre_cancha }}"
+      {% for c in opciones.canchas %}<option value="{{ c.id_complejo }}|{{ c.nombre_cancha }}"
         {{ 'selected' if editando and editando.id_complejo == c.id_complejo and editando.nombre_cancha == c.nombre_cancha }}>{{ c.complejo }} - {{ c.nombre_cancha }}</option>{% endfor %}
     </select>
   </label>
