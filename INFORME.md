@@ -21,7 +21,7 @@ queda en la base; lo demás está en `reglas.py`, escrito una sola vez, como con
 |---|---|
 | Ambos equipos del partido son de la misma edición | FK compuesta `(id_equipo, id_torneo)` → `equipo` |
 | Un equipo no se enfrenta a sí mismo | `CHECK (id_equipo_local <> id_equipo_visitante)` y `app.py` |
-| El capitán es un jugador del plantel | FK `(id_equipo, ci_capitan)` → `equipo_jugador_torneo` |
+| El capitán es un jugador del plantel | `verificar_capitan`, además de la FK `ci_capitan` → `jugador` |
 | Un jugador integra un solo equipo por edición | `UNIQUE (ci_jugador, id_torneo)` |
 | En la planilla solo hay jugadores del plantel | FK `(id_equipo, ci_jugador)` → `equipo_jugador_torneo` |
 | Solo convierten o son amonestados los que están en la planilla | FK de `gol` y `tarjeta` → `planilla_partido` |
@@ -35,6 +35,10 @@ queda en la base; lo demás está en `reglas.py`, escrito una sola vez, como con
 | Un suspendido no figura en la planilla | `equipo_para_planilla` |
 | La planilla se corrige solo dentro de las 48 horas | `verificar_planilla_editable` |
 | Sanción automática por roja o por cada 3 amarillas | `sancionar_por_tarjeta` |
+
+### Versión de MySQL
+El `docker-compose` inicial del curso usa MySQL 5.7, pero acá se usa MySQL 8.4. Antes de la versión 8.0.16, MySQL acepta los `CHECK` pero
+no los aplica, y la letra pide validar también en la base de datos. Del compose del curso se tomaron el juego de caracteres y el volumen `mysql_data`.
 
 ### Transacciones y ACID
 | Propiedad | En este sistema |
@@ -108,7 +112,7 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 |---|---|
 | 30/10/2026 | Modelo de datos, script SQL con triggers, usuarios de BD, datos de prueba, aplicación Flask y Docker Compose, con asistencia de Claude Code (IA). Pruebas sobre MariaDB. |
 | 06/11/2026 | Revisión contra la letra y el temario del curso, con asistencia de Claude Code. Las reglas pasan de triggers a consultas en Python, porque los triggers no están en los materiales del curso. Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. Pruebas de las reglas sobre MariaDB. |
-| 06/11/2026 | Revisión contra los materiales del curso, con asistencia de Claude Code: se usan vistas para los resultados y `FOR UPDATE` para el aislamiento, y se quitan funciones de SQL que no figuran en ellos. Pruebas sobre MariaDB. |
+| 06/11/2026 | Revisión contra los materiales del curso, con asistencia de Claude Code: se usan vistas para los resultados y `FOR UPDATE` para el aislamiento, y se quitan funciones de SQL que no figuran en ellos. El capitán pasa a una FK simple hacia `jugador`, más un control en `reglas.py`. Pruebas sobre MariaDB. |
 | _completar_ | _Prueba con `docker compose up` sobre MySQL 8.4._ |
 
 ## 6. Uso de inteligencia artificial
@@ -119,9 +123,10 @@ El trabajo se revisó contra la letra y los materiales del curso. Los datos de p
 ## 7. Bibliografía
 Fuentes consultadas el 06/11/2026.
 
-- Universidad Católica del Uruguay. Base de Datos I: *Syllabus 2026-2* y presentaciones *SQL*, *JOIN en SQL*, *Seguridad* y *Transacciones y ACID*.
+- Universidad Católica del Uruguay. Base de Datos I: *Syllabus 2026-2*, presentaciones *SQL*, *JOIN en SQL*, *Seguridad*, *Transacciones y ACID* y *Ejemplo de PRIMARY KEY y FOREIGN KEY*, y `docker-compose` inicial.
 - Anthropic. (2026). *Claude Code* (Claude Opus 5.5) [Asistente de inteligencia artificial]. https://claude.ai/code
 - Oracle. *MySQL 8.4 Reference Manual*: "CHECK Constraints" y "GRANT Statement". https://dev.mysql.com/doc/refman/8.4/en/
 - Pallets. *Flask Documentation (3.1.x)*: "Message Flashing". https://flask.palletsprojects.com/en/stable/patterns/flashing/
 - *PyMySQL Documentation*: "Installation". https://pymysql.readthedocs.io/en/latest/user/installation.html
 - Docker Hub. *mysql (imagen oficial)*. https://hub.docker.com/_/mysql
+- W3Schools. *MySQL Functions*. https://www.w3schools.com/mysql/mysql_ref_functions.asp

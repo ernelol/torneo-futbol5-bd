@@ -50,6 +50,12 @@ def verificar_cambio_de_facultad(id_equipo, id_facultad) -> None:
         raise ValueError("No se puede cambiar la facultad de un equipo que ya tiene jugadores.")
 
 
+def verificar_capitan(id_equipo, ci) -> None:
+    if ci and not db.consultar("SELECT 1 FROM equipo_jugador_torneo WHERE id_equipo = %s AND ci_jugador = %s",
+                               (id_equipo, ci)):
+        raise ValueError("El capitán debe ser un jugador del plantel.")
+
+
 def verificar_alta_en_plantel(equipo: dict, ci) -> None:
     verificar_inscripcion(equipo["id_torneo"])
     jugador = db.consultar_uno("SELECT id_facultad, tipo FROM jugador WHERE ci = %s", (ci,))

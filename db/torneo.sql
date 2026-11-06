@@ -62,7 +62,8 @@ CREATE TABLE equipo (
     UNIQUE (id_torneo, nombre),
     UNIQUE (id_equipo, id_torneo),
     FOREIGN KEY (id_torneo) REFERENCES torneo (id_torneo),
-    FOREIGN KEY (id_facultad) REFERENCES facultad (id_facultad)
+    FOREIGN KEY (id_facultad) REFERENCES facultad (id_facultad),
+    FOREIGN KEY (ci_capitan) REFERENCES jugador (ci)
 );
 
 CREATE TABLE equipo_jugador_torneo (
@@ -78,10 +79,6 @@ CREATE TABLE equipo_jugador_torneo (
     FOREIGN KEY (ci_jugador) REFERENCES jugador (ci),
     CHECK (numero_camiseta BETWEEN 1 AND 99)
 );
-
--- el capitán debe ser uno de los jugadores del plantel del equipo
-ALTER TABLE equipo ADD FOREIGN KEY (id_equipo, ci_capitan)
-    REFERENCES equipo_jugador_torneo (id_equipo, ci_jugador);
 
 CREATE TABLE complejo (
     id_complejo  INT AUTO_INCREMENT PRIMARY KEY,

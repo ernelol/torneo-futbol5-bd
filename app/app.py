@@ -226,7 +226,8 @@ def guardar_equipo():
         nombre, facultad = v.texto(f, "nombre", 60), v.opcion(f, "id_facultad", facultades)
         if f.get("id_equipo"):
             reglas.verificar_cambio_de_facultad(f["id_equipo"], facultad)
-            capitan = f.get("ci_capitan") or None  # la FK garantiza que sea del plantel
+            capitan = f.get("ci_capitan") or None
+            reglas.verificar_capitan(f["id_equipo"], capitan)
             db.ejecutar("UPDATE equipo SET nombre = %s, id_facultad = %s, ci_capitan = %s WHERE id_equipo = %s",
                         (nombre, facultad, capitan, f["id_equipo"]))
         else:
@@ -243,9 +244,7 @@ def eliminar_equipo(id_equipo):
     def accion():
         equipo = db.consultar_uno("SELECT id_torneo FROM equipo WHERE id_equipo = %s", (id_equipo,))
         reglas.verificar_inscripcion(equipo["id_torneo"])
-        # el capitán referencia al plantel: se quita antes de borrar el equipo (y su plantel en cascada)
-        db.ejecutar("UPDATE equipo SET ci_capitan = NULL WHERE id_equipo = %s", (id_equipo,))
-        db.ejecutar("DELETE FROM equipo WHERE id_equipo = %s", (id_equipo,))
+        db.ejecutar("DELETE FROM equipo WHERE id_equipo = %s", (id_equipo,))  # el plantel se borra en cascada
     realizar(accion, "Equipo eliminado.")
     return volver()
 

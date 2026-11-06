@@ -1,10 +1,11 @@
 services:
   db:
     image: mysql:8.4
-    command: --default-time-zone=-03:00
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-time-zone=-03:00
     environment:
       MYSQL_ROOT_PASSWORD: root
     volumes:
+      - mysql_data:/var/lib/mysql
       - ./db:/docker-entrypoint-initdb.d:ro   # ejecuta torneo.sql la primera vez
     ports:
       - "3307:3306"
@@ -24,3 +25,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+volumes:
+  mysql_data:
