@@ -107,13 +107,14 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 - **2027, 1.er semestre (en inscripción):** un equipo con 3 jugadores, para probar el ABM de planteles.
 
 ## 5. Bitácora
+Todas las etapas se hicieron con asistencia de Claude Code (ver sección 6).
 
-| Fecha | Trabajo realizado |
+| Etapa | Trabajo realizado |
 |---|---|
-| 30/10/2026 | Modelo de datos, script SQL con triggers, usuarios de BD, datos de prueba, aplicación Flask y Docker Compose, con asistencia de Claude Code (IA). Pruebas sobre MariaDB. |
-| 06/11/2026 | Revisión contra la letra y el temario del curso, con asistencia de Claude Code. Las reglas pasan de triggers a consultas en Python, porque los triggers no están en los materiales del curso. Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. Pruebas de las reglas sobre MariaDB. |
-| 06/11/2026 | Revisión contra los materiales del curso, con asistencia de Claude Code: se usan vistas para los resultados y `FOR UPDATE` para el aislamiento, y se quitan funciones de SQL que no figuran en ellos. El capitán pasa a una FK simple hacia `jugador`, más un control en `reglas.py`. Pruebas sobre MariaDB. |
-| _completar_ | _Prueba con `docker compose up` sobre MySQL 8.4._ |
+| 1. Primera versión | Modelo de datos, script SQL, usuarios de base de datos, datos de prueba, aplicación Flask y Docker Compose. Pruebas sobre MariaDB. |
+| 2. Revisión contra la letra | Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. |
+| 3. Revisión contra los materiales del curso | Las reglas pasan de triggers a consultas en Python, porque los triggers no están en los materiales. Se usan vistas para los resultados y `FOR UPDATE` para el aislamiento, se quitan funciones de SQL que no figuran en ellos y el capitán pasa a una FK simple hacia `jugador`, más un control en `reglas.py`. Pruebas de las reglas sobre MariaDB. |
+| Pendiente | Prueba con `docker compose up` sobre MySQL 8.4. |
 
 ## 6. Uso de inteligencia artificial
 Según lo que pide el syllabus de la materia (sección 1.5), se declara que se usó Claude Code (modelo Claude Opus 5.5, de Anthropic)
@@ -121,8 +122,6 @@ como asistente para diseñar el modelo y escribir el código, los datos de prueb
 El trabajo se revisó contra la letra y los materiales del curso. Los datos de prueba son inventados.
 
 ## 7. Bibliografía
-Fuentes consultadas el 06/11/2026.
-
 - Universidad Católica del Uruguay. Base de Datos I: *Syllabus 2026-2*, presentaciones *SQL*, *JOIN en SQL*, *Seguridad*, *Transacciones y ACID* y *Ejemplo de PRIMARY KEY y FOREIGN KEY*, y `docker-compose` inicial.
 - Anthropic. (2026). *Claude Code* (Claude Opus 5.5) [Asistente de inteligencia artificial]. https://claude.ai/code
 - Oracle. *MySQL 8.4 Reference Manual*: "CHECK Constraints" y "GRANT Statement". https://dev.mysql.com/doc/refman/8.4/en/
