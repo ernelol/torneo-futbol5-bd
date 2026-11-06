@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>Jugadores</h1>
+<form method="post" action="{{ url_for('guardar_jugador') }}" class="tarjeta">
+  <h2>{{ 'Modificar' if editando else 'Nuevo' }} jugador</h2>
+  <input type="hidden" name="original" value="{{ editando.ci if editando }}">
+  <label>Cédula <input name="ci" required pattern="[0-9]{7,8}" title="7 u 8 dígitos, sin puntos ni guion"
+         value="{{ editando.ci if editando }}" {{ 'disabled' if editando }}></label>
+  <label>Nombre <input name="nombre" required maxlength="50" value="{{ editando.nombre if editando }}"></label>
+  <label>Apellido <input name="apellido" required maxlength="50" value="{{ editando.apellido if editando }}"></label>
+  <label>Email <input type="email" name="email" required maxlength="100" value="{{ editando.email if editando }}"></label>
+  <label>Nacimiento <input type="date" name="fecha_nacimiento" required min="1920-01-01" max="{{ hoy }}" value="{{ editando.fecha_nacimiento if editando }}"></label>
+  <label>Facultad
+    <select name="id_facultad" required>
+      {% for f in facultades %}<option value="{{ f.id_facultad }}" {{ 'selected' if editando and editando.id_facultad == f.id_facultad }}>{{ f.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Tipo <select name="tipo" required>{{ m.opciones(TIPOS_JUGADOR, editando.tipo if editando) }}</select></label>
+  <button>Guardar</button> {% if editando %}<a href="{{ url_for('jugadores') }}">Cancelar</a>{% endif %}
+</form>
+<table>
+  <tr><th>Cédula</th><th>Nombre</th><th>Email</th><th>Nacimiento</th><th>Facultad</th><th>Tipo</th><th></th></tr>
+  {% for j in jugadores %}
+  <tr>
+    <td>{{ j.ci }}</td><td>{{ j.apellido }}, {{ j.nombre }}</td><td>{{ j.email }}</td>
+    <td>{{ j.fecha_nacimiento }}</td><td>{{ j.facultad }}</td><td>{{ j.tipo|etiqueta }}</td>
+    <td><a href="?editar={{ j.ci }}">Modificar</a> {{ m.eliminar(url_for('eliminar_jugador', ci=j.ci)) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

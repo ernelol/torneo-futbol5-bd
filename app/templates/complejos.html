@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>Complejos deportivos</h1>
+<form method="post" action="{{ url_for('guardar_complejo') }}" class="tarjeta">
+  <h2>{{ 'Modificar' if editando else 'Nuevo' }} complejo</h2>
+  <input type="hidden" name="id_complejo" value="{{ editando.id_complejo if editando }}">
+  <label>Nombre <input name="nombre" required maxlength="80" value="{{ editando.nombre if editando }}"></label>
+  <label>Dirección <input name="direccion" required maxlength="120" value="{{ editando.direccion if editando }}"></label>
+  <label>Departamento <select name="departamento" required>{{ m.opciones(DEPARTAMENTOS, editando.departamento if editando else 'Montevideo') }}</select></label>
+  <button>Guardar</button> {% if editando %}<a href="{{ url_for('complejos') }}">Cancelar</a>{% endif %}
+</form>
+<table>
+  <tr><th>Nombre</th><th>Dirección</th><th>Departamento</th><th></th></tr>
+  {% for c in complejos %}
+  <tr>
+    <td>{{ c.nombre }}</td><td>{{ c.direccion }}</td><td>{{ c.departamento }}</td>
+    <td><a href="?editar={{ c.id_complejo }}">Modificar</a> {{ m.eliminar(url_for('eliminar_complejo', id_complejo=c.id_complejo)) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h1>Canchas</h1>
+<form method="post" action="{{ url_for('guardar_cancha') }}" class="tarjeta">
+  <h2>Nueva cancha</h2>
+  <p class="nota">Si ya existe una cancha con ese nombre en el complejo, se modifican su superficie y techo.</p>
+  <label>Complejo
+    <select name="id_complejo" required>
+      {% for c in complejos %}<option value="{{ c.id_complejo }}">{{ c.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Nombre <input name="nombre_cancha" required maxlength="40"></label>
+  <label>Superficie <select name="superficie" required>{{ m.opciones(SUPERFICIES, None) }}</select></label>
+  <label><input type="checkbox" name="techada"> Techada</label>
+  <button>Guardar</button>
+</form>
+<table>
+  <tr><th>Complejo</th><th>Cancha</th><th>Superficie</th><th>Techada</th><th></th></tr>
+  {% for c in canchas %}
+  <tr>
+    <td>{{ c.complejo }}</td><td>{{ c.nombre_cancha }}</td><td>{{ c.superficie|etiqueta }}</td><td>{{ 'Sí' if c.techada else 'No' }}</td>
+    <td>
+      <form method="post" action="{{ url_for('eliminar_cancha') }}" class="en-linea" onsubmit="return confirm('¿Confirmar?')">
+        <input type="hidden" name="id_complejo" value="{{ c.id_complejo }}">
+        <input type="hidden" name="nombre_cancha" value="{{ c.nombre_cancha }}">
+        <button class="peligro">Eliminar</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

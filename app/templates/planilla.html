@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>{{ partido.local }} {{ partido.goles_local }} - {{ partido.goles_visitante }} {{ partido.visitante }}</h1>
+<p>Fecha {{ partido.numero_fecha }} · {{ partido.dia }} {{ partido.hora }} · {{ partido.nombre_cancha }} ·
+   Estado: <strong>{{ partido.estado|etiqueta }}</strong> ·
+   <a href="{{ url_for('partidos', torneo=partido.id_torneo) }}">Volver a partidos</a></p>
+{% if partido.estado == 'programado' %}
+<form method="post" action="{{ url_for('marcar_jugado', id_partido=partido.id_partido) }}" class="en-linea">
+  <button>Marcar como jugado</button>
+</form>
+{% endif %}
+<p class="nota">El resultado se calcula con los goles. Una vez jugado, la planilla puede corregirse solo durante 48 horas.</p>
+
+<h2>Jugadores en la planilla</h2>
+<form method="post" action="{{ url_for('agregar_a_planilla', id_partido=partido.id_partido) }}" class="tarjeta">
+  <label>Jugador
+    <select name="ci_jugador" required>
+      {% for j in disponibles %}<option value="{{ j.ci_jugador }}">{{ j.equipo }}: {{ j.apellido }}, {{ j.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <button>Agregar</button>
+</form>
+<table>
+  <tr><th>Equipo</th><th>Jugador</th><th></th></tr>
+  {% for j in en_planilla %}
+  <tr><td>{{ j.equipo }}</td><td>{{ j.nombre }} {{ j.apellido }}</td>
+      <td>{{ m.eliminar(url_for('quitar_de_planilla', id_partido=partido.id_partido, ci=j.ci_jugador), 'Quitar') }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Goles</h2>
+<form method="post" action="{{ url_for('agregar_gol', id_partido=partido.id_partido) }}" class="tarjeta">
+  <label>Jugador
+    <select name="ci_jugador" required>
+      {% for j in en_planilla %}<option value="{{ j.ci_jugador }}">{{ j.equipo }}: {{ j.apellido }}, {{ j.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Minuto <input type="number" name="minuto" required min="0" max="60"></label>
+  <label><input type="checkbox" name="autogol"> Autogol</label>
+  <button>Registrar gol</button>
+</form>
+<table>
+  <tr><th>Minuto</th><th>Jugador</th><th></th><th></th></tr>
+  {% for g in goles %}
+  <tr><td>{{ g.minuto }}'</td><td>{{ g.nombre }} {{ g.apellido }}</td><td>{{ 'Autogol' if g.autogol }}</td>
+      <td>{{ m.eliminar(url_for('eliminar_gol', id_gol=g.id_gol)) }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Tarjetas</h2>
+<form method="post" action="{{ url_for('agregar_tarjeta', id_partido=partido.id_partido) }}" class="tarjeta">
+  <label>Jugador
+    <select name="ci_jugador" required>
+      {% for j in en_planilla %}<option value="{{ j.ci_jugador }}">{{ j.equipo }}: {{ j.apellido }}, {{ j.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Minuto <input type="number" name="minuto" required min="0" max="60"></label>
+  <label>Color <select name="color" required>{{ m.opciones(COLORES_TARJETA, None) }}</select></label>
+  <button>Registrar tarjeta</button>
+</form>
+<table>
+  <tr><th>Minuto</th><th>Jugador</th><th>Color</th><th></th></tr>
+  {% for t in tarjetas %}
+  <tr><td>{{ t.minuto }}'</td><td>{{ t.nombre }} {{ t.apellido }}</td><td class="{{ t.color }}">{{ t.color|etiqueta }}</td>
+      <td>{{ m.eliminar(url_for('eliminar_tarjeta', id_tarjeta=t.id_tarjeta)) }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>Equipos</h1>
+{{ m.selector_torneo(torneos, torneo) }}
+{% if torneo %}
+<form method="post" action="{{ url_for('guardar_equipo') }}" class="tarjeta">
+  <h2>{{ 'Modificar' if editando else 'Nuevo' }} equipo</h2>
+  <input type="hidden" name="id_torneo" value="{{ torneo.id_torneo }}">
+  <input type="hidden" name="id_equipo" value="{{ editando.id_equipo if editando }}">
+  <label>Nombre <input name="nombre" required maxlength="60" value="{{ editando.nombre if editando }}"></label>
+  <label>Facultad
+    <select name="id_facultad" required>
+      {% for f in facultades %}<option value="{{ f.id_facultad }}" {{ 'selected' if editando and editando.id_facultad == f.id_facultad }}>{{ f.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if editando %}
+  <label>Capitán
+    <select name="ci_capitan">
+      <option value="">(sin capitán)</option>
+      {% for j in plantel %}<option value="{{ j.ci_jugador }}" {{ 'selected' if j.ci_jugador == editando.ci_capitan }}>{{ j.nombre }} {{ j.apellido }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <button>Guardar</button> {% if editando %}<a href="?torneo={{ torneo.id_torneo }}">Cancelar</a>{% endif %}
+</form>
+<table>
+  <tr><th>Equipo</th><th>Facultad</th><th>Capitán</th><th>Jugadores</th><th></th></tr>
+  {% for e in equipos %}
+  <tr>
+    <td>{{ e.nombre }}</td><td>{{ e.facultad }}</td><td>{{ e.capitan or '—' }}</td><td>{{ e.jugadores }}</td>
+    <td>
+      <a href="{{ url_for('plantel', id_equipo=e.id_equipo) }}">Plantel</a>
+      <a href="?torneo={{ torneo.id_torneo }}&editar={{ e.id_equipo }}">Modificar</a>
+      {{ m.eliminar(url_for('eliminar_equipo', id_equipo=e.id_equipo)) }}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

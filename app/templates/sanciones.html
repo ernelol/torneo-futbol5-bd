@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>Sanciones</h1>
+{{ m.selector_torneo(torneos, torneo) }}
+<p class="nota">Las sanciones por roja y por 3 amarillas se generan solas al registrar la tarjeta.</p>
+{% if torneo %}
+<form method="post" action="{{ url_for('guardar_sancion') }}" class="tarjeta">
+  <h2>{{ 'Modificar' if editando else 'Nueva' }} sanción</h2>
+  <input type="hidden" name="id_torneo" value="{{ torneo.id_torneo }}">
+  <input type="hidden" name="id_sancion" value="{{ editando.id_sancion if editando }}">
+  <label>Jugador
+    <select name="ci_jugador" required>
+      {% for j in jugadores %}<option value="{{ j.ci }}" {{ 'selected' if editando and editando.ci_jugador == j.ci }}>{{ j.equipo }}: {{ j.apellido }}, {{ j.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Motivo <select name="motivo" required>{{ m.opciones(MOTIVOS_SANCION, editando.motivo if editando else 'disciplinaria') }}</select></label>
+  <label>Desde la fecha <input type="number" name="numero_fecha_inicio" required min="1" max="50" value="{{ editando.numero_fecha_inicio if editando }}"></label>
+  <label>Cantidad de fechas <input type="number" name="cantidad_fechas" required min="1" max="20" value="{{ editando.cantidad_fechas if editando else 1 }}"></label>
+  <button>Guardar</button> {% if editando %}<a href="?torneo={{ torneo.id_torneo }}">Cancelar</a>{% endif %}
+</form>
+<table>
+  <tr><th>Jugador</th><th>Equipo</th><th>Motivo</th><th>Fechas</th><th></th></tr>
+  {% for s in sanciones %}
+  <tr>
+    <td>{{ s.nombre }} {{ s.apellido }}</td><td>{{ s.equipo }}</td><td>{{ s.motivo|etiqueta }}</td>
+    <td>{{ s.numero_fecha_inicio }}{% if s.cantidad_fechas > 1 %} a {{ s.numero_fecha_inicio + s.cantidad_fechas - 1 }}{% endif %}</td>
+    <td><a href="?torneo={{ torneo.id_torneo }}&editar={{ s.id_sancion }}">Modificar</a> {{ m.eliminar(url_for('eliminar_sancion', id_sancion=s.id_sancion)) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

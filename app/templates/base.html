@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Torneo Interfacultades de Fútbol 5</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+  {% if session.rol %}
+  <nav>
+    <strong>⚽ Fútbol 5 UCU</strong>
+    <a href="{{ url_for('partidos') }}">Partidos</a>
+    {% if session.rol == ROL_ADMIN %}
+    <a href="{{ url_for('torneos') }}">Torneos</a>
+    <a href="{{ url_for('jugadores') }}">Jugadores</a>
+    <a href="{{ url_for('equipos') }}">Equipos</a>
+    <a href="{{ url_for('complejos') }}">Complejos y canchas</a>
+    <a href="{{ url_for('sanciones') }}">Sanciones</a>
+    <a href="{{ url_for('reportes') }}">Reportes</a>
+    {% endif %}
+    <span class="derecha">{{ session.correo }} ({{ session.rol }}) · <a href="{{ url_for('logout') }}">Salir</a></span>
+  </nav>
+  {% endif %}
+  <main>
+    {% for categoria, mensaje in get_flashed_messages(with_categories=true) %}
+    <p class="mensaje {{ categoria }}">{{ mensaje }}</p>
+    {% endfor %}
+    {% block contenido %}{% endblock %}
+  </main>
+</body>
+</html>

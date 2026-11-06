@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>Plantel de {{ equipo.nombre }}</h1>
+<p>{{ equipo.facultad }} · {{ equipo.torneo }} ({{ equipo.estado_torneo|etiqueta }}) ·
+   <a href="{{ url_for('equipos', torneo=equipo.id_torneo) }}">Volver a equipos</a></p>
+<p class="nota">Entre 5 y 10 jugadores de la facultad, como máximo 2 docentes/funcionarios. Solo se modifica durante la inscripción.</p>
+<form method="post" action="{{ url_for('agregar_al_plantel', id_equipo=equipo.id_equipo) }}" class="tarjeta">
+  <label>Jugador
+    <select name="ci_jugador" required>
+      {% for j in disponibles %}<option value="{{ j.ci }}">{{ j.apellido }}, {{ j.nombre }} ({{ j.tipo|etiqueta }})</option>{% endfor %}
+    </select>
+  </label>
+  <label>Camiseta <input type="number" name="numero_camiseta" required min="1" max="99"></label>
+  <button>Agregar</button>
+</form>
+<table>
+  <tr><th>Camiseta</th><th>Jugador</th><th>Tipo</th><th></th></tr>
+  {% for j in plantel %}
+  <tr>
+    <td>{{ j.numero_camiseta }}</td>
+    <td>{{ j.nombre }} {{ j.apellido }} {{ '(C)' if j.ci_jugador == equipo.ci_capitan }}</td>
+    <td>{{ j.tipo|etiqueta }}</td>
+    <td>{{ m.eliminar(url_for('quitar_del_plantel', id_equipo=equipo.id_equipo, ci=j.ci_jugador), 'Quitar') }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p>Total: {{ plantel|length }} jugadores.</p>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block contenido %}
+<h1>Torneo Interfacultades de Fútbol 5</h1>
+<form method="post" class="tarjeta angosta">
+  <label>Correo <input type="email" name="correo" required maxlength="100" autofocus></label>
+  <label>Contraseña <input type="password" name="contrasena" required></label>
+  <button>Ingresar</button>
+</form>
+{% endblock %}

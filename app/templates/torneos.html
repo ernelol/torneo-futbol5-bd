@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>Torneos</h1>
+<form method="post" action="{{ url_for('guardar_torneo') }}" class="tarjeta">
+  <h2>{{ 'Modificar' if editando else 'Nuevo' }} torneo</h2>
+  <input type="hidden" name="id_torneo" value="{{ editando.id_torneo if editando }}">
+  <label>Nombre <input name="nombre" required maxlength="100" value="{{ editando.nombre if editando }}"></label>
+  <label>Año <input type="number" name="anio" required min="2000" max="2100" value="{{ editando.anio if editando }}"></label>
+  <label>Semestre <select name="semestre" required>{{ m.opciones({1: '1', 2: '2'}, editando.semestre if editando) }}</select></label>
+  <label>Inicio <input type="date" name="fecha_inicio" required value="{{ editando.fecha_inicio if editando }}"></label>
+  <label>Fin <input type="date" name="fecha_fin" required value="{{ editando.fecha_fin if editando }}"></label>
+  <label>Estado <select name="estado" required>{{ m.opciones(ESTADOS_TORNEO, editando.estado if editando) }}</select></label>
+  <button>Guardar</button> {% if editando %}<a href="{{ url_for('torneos') }}">Cancelar</a>{% endif %}
+</form>
+<table>
+  <tr><th>Nombre</th><th>Año</th><th>Semestre</th><th>Inicio</th><th>Fin</th><th>Estado</th><th></th></tr>
+  {% for t in torneos %}
+  <tr>
+    <td>{{ t.nombre }}</td><td>{{ t.anio }}</td><td>{{ t.semestre }}</td>
+    <td>{{ t.fecha_inicio }}</td><td>{{ t.fecha_fin }}</td><td>{{ t.estado|etiqueta }}</td>
+    <td><a href="?editar={{ t.id_torneo }}">Modificar</a> {{ m.eliminar(url_for('eliminar_torneo', id_torneo=t.id_torneo)) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

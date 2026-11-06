@@ -1,0 +1,26 @@
+services:
+  db:
+    image: mysql:8.4
+    command: --default-time-zone=-03:00
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d:ro   # ejecuta torneo.sql la primera vez
+    ports:
+      - "3307:3306"
+    healthcheck:
+      # por TCP: solo responde cuando terminó de ejecutar el script inicial
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      retries: 30
+
+  app:
+    build: .
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy

@@ -1,0 +1,23 @@
+{% macro opciones(valores, actual) %}
+  {% for valor, texto in valores.items() %}
+  <option value="{{ valor }}" {{ 'selected' if valor|string == actual|string }}>{{ texto }}</option>
+  {% endfor %}
+{% endmacro %}
+
+{% macro eliminar(url, texto='Eliminar') %}
+<form method="post" action="{{ url }}" class="en-linea" onsubmit="return confirm('¿Confirmar?')">
+  <button class="peligro">{{ texto }}</button>
+</form>
+{% endmacro %}
+
+{% macro selector_torneo(torneos, torneo) %}
+<form method="get" class="en-linea">
+  <label>Torneo
+    <select name="torneo" onchange="this.form.submit()">
+      {% for t in torneos %}
+      <option value="{{ t.id_torneo }}" {{ 'selected' if torneo and t.id_torneo == torneo.id_torneo }}>{{ t.nombre }} ({{ t.estado|etiqueta }})</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+{% endmacro %}

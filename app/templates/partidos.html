@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block contenido %}
+<h1>Partidos</h1>
+{{ m.selector_torneo(torneos, torneo) }}
+{% if torneo and session.rol == ROL_ADMIN %}
+<form method="post" action="{{ url_for('guardar_partido') }}" class="tarjeta">
+  <h2>{{ 'Modificar' if editando else 'Programar' }} partido</h2>
+  <input type="hidden" name="id_torneo" value="{{ torneo.id_torneo }}">
+  <input type="hidden" name="id_partido" value="{{ editando.id_partido if editando }}">
+  <label>Fecha n.º <input type="number" name="numero_fecha" required min="1" max="50" value="{{ editando.numero_fecha if editando }}"></label>
+  <label>Local
+    <select name="id_equipo_local" required>
+      {% for e in equipos %}<option value="{{ e.id_equipo }}" {{ 'selected' if editando and editando.id_equipo_local == e.id_equipo }}>{{ e.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Visitante
+    <select name="id_equipo_visitante" required>
+      {% for e in equipos %}<option value="{{ e.id_equipo }}" {{ 'selected' if editando and editando.id_equipo_visitante == e.id_equipo }}>{{ e.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Día <input type="date" name="dia" required value="{{ editando.dia if editando }}"></label>
+  <label>Turno
+    <select name="id_turno" required>
+      {% for t in turnos %}<option value="{{ t.id_turno }}" {{ 'selected' if editando and editando.id_turno == t.id_turno }}>{{ t.horario }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Cancha
+    <select name="cancha" required>
+      {% for c in canchas %}<option value="{{ c.id_complejo }}|{{ c.nombre_cancha }}"
+        {{ 'selected' if editando and editando.id_complejo == c.id_complejo and editando.nombre_cancha == c.nombre_cancha }}>{{ c.complejo }} - {{ c.nombre_cancha }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Estado <select name="estado" required>{{ m.opciones(ESTADOS_PARTIDO, editando.estado if editando else 'programado') }}</select></label>
+  <button>Guardar</button> {% if editando %}<a href="?torneo={{ torneo.id_torneo }}">Cancelar</a>{% endif %}
+</form>
+{% endif %}
+<table>
+  <tr><th>Fecha</th><th>Día</th><th>Hora</th><th>Cancha</th><th>Partido</th><th>Resultado</th><th>Estado</th><th></th></tr>
+  {% for p in partidos %}
+  <tr>
+    <td>{{ p.numero_fecha }}</td><td>{{ p.dia }}</td><td>{{ p.hora }}</td><td>{{ p.complejo }} - {{ p.nombre_cancha }}</td>
+    <td>{{ p.local }} vs {{ p.visitante }}</td>
+    <td>{{ p.goles_local }} - {{ p.goles_visitante }}</td>
+    <td>{{ p.estado|etiqueta }}</td>
+    <td>
+      <a href="{{ url_for('planilla', id_partido=p.id_partido) }}">Planilla</a>
+      {% if session.rol == ROL_ADMIN %}
+      <a href="?torneo={{ torneo.id_torneo }}&editar={{ p.id_partido }}">Modificar</a>
+      {{ m.eliminar(url_for('eliminar_partido', id_partido=p.id_partido)) }}
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
