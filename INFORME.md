@@ -67,6 +67,17 @@ Las transacciones son cortas: empiezan y terminan dentro de un mismo pedido, nun
     Sobre `sancion_jugador` solo tiene lectura y alta, para las sanciones automáticas por tarjeta.
 - Las páginas también controlan el rol (decorador `requiere`).
 
+### Alternativas consideradas
+| Decisión | Qué se eligió | Qué se descartó y por qué |
+|---|---|---|
+| Dónde poner las reglas | Consultas en `reglas.py`, dentro de una transacción | Triggers y procedimientos: la primera versión los usaba y protegían aunque se entrara directo a la base, pero no están en los materiales del curso y eran más difíciles de explicar y mantener. |
+| Resultado del partido | Calcularlo con una vista | Guardarlo en una columna: podría quedar distinto de los goles registrados. |
+| Versión de MySQL | 8.4 | 5.7, la del compose del curso: no aplica los `CHECK`. |
+| Capitán del equipo | FK a `jugador` más un control en `reglas.py` | FK al plantel: obligaba a una referencia circular entre `equipo` y el plantel, y a vaciar el capitán antes de borrar un equipo. |
+| Corrección de amarillas | El administrador elimina la suspensión desde el ABM | Recalcular todas las sanciones en cada corrección: exigía funciones de ventana y más triggers para un caso poco frecuente. |
+| Frontend | Plantillas HTML generadas por Flask | Un framework aparte: sumaba una API y una aplicación cliente que este sistema de formularios no necesita. |
+| Acceso a MySQL | SQL escrito a mano con PyMySQL | Un ORM: la letra no lo permite. Se mantuvo PyMySQL porque se usa igual que `mysql-connector` (cursor, `%s`, `commit`). |
+
 ## 2. Mejoras al modelo de datos
 
 - **El resultado no se guarda: se calcula** con la vista `resultado_partido` a partir de los goles
@@ -109,17 +120,17 @@ asignados a cada partido, y que dos amarillas en un mismo partido equivalgan a u
 - **2027, 1.er semestre (en inscripción):** un equipo con 3 jugadores, para probar el ABM de planteles.
 
 ## 5. Bitácora
-
-| Etapa | Trabajo realizado |
-|---|---|
-| 1. Primera versión | Modelo de datos, script SQL, usuarios de base de datos, datos de prueba, aplicación Flask y Docker Compose. Pruebas sobre MariaDB. |
-| 2. Revisión contra la letra | Se exige plantel completo y capitán para cerrar la inscripción, se valida que la fecha de nacimiento no sea futura, se corrige el porcentaje de partidos, la clave de `partido` pasa a ser la de la letra y se valida el login en el backend. |
-| 3. Revisión contra los materiales del curso | Las reglas pasan de triggers a consultas en Python, porque los triggers no están en los materiales. Se usan vistas para los resultados y `FOR UPDATE` para el aislamiento, se quitan funciones de SQL que no figuran en ellos y el capitán pasa a una FK simple hacia `jugador`, más un control en `reglas.py`. Pruebas de las reglas sobre MariaDB. |
-| 4. Prueba final con Docker | Se levantó el proyecto con `docker compose up` sobre MySQL 8.4. El script carga sin errores, MySQL aplica los `CHECK` y rechaza lo que cada usuario no tiene permitido, y las reglas de la letra y los reportes dan los resultados esperados. |
+1. **Análisis de la letra.** Se identificaron las tablas pedidas, las reglas de cada etapa del torneo y los reportes. Se decidió empezar por la base de datos, porque de ella depende el resto.
+2. **Primera versión.** Se armó un único script SQL con las tablas, los usuarios y los datos de prueba, con las reglas en triggers. Después se hizo la aplicación con Flask y Docker Compose. Como en ese momento no había MySQL disponible, las pruebas se hicieron sobre MariaDB.
+3. **Primeros errores.** Al entrar como planillero, la lista de partidos fallaba: su usuario no podía leer `complejo`, y se agregó ese permiso. También se comprobó que los reportes funcionaran con `ONLY_FULL_GROUP_BY`, el modo por defecto de MySQL.
+4. **Revisión contra la letra.** Se detectó que un torneo podía salir de inscripción con equipos incompletos o sin capitán, que se aceptaban fechas de nacimiento futuras, que el porcentaje de partidos incluía a los programados y que el backend no validaba el login. También se detectó que algunas reglas no se habían probado de verdad: el control de rival repetido cortaba antes, y no llegaban a ejecutarse los de cancha ocupada y partido por fecha. Se corrigió todo y se probaron con equipos nuevos. Para las amarillas se probó un recálculo automático, pero se descartó por complejo.
+5. **Revisión contra el temario.** Los triggers y procedimientos no figuraban en el curso, así que las reglas pasaron a `reglas.py`. En ese cambio también se quitaron las vistas, y fue un error: la presentación de SQL las incluye, así que volvieron.
+6. **Revisión contra los materiales.** Al leer las presentaciones se reemplazó lo que no aparecía en ellas y se podía evitar, como `REGEXP` y `CASE`. Del tema de transacciones se tomó `FOR UPDATE`, que resolvió el caso de dos personas programando la misma cancha, y se probó con dos sesiones a la vez. También se simplificó la FK del capitán.
+7. **Prueba final con Docker.** El compose del curso usa MySQL 5.7, pero esa versión no aplica los `CHECK`, así que se mantuvo la 8.4. Se levantó el proyecto con `docker compose up`: el script cargó sin errores, MySQL rechazó los datos inválidos y lo que cada usuario no tiene permitido, y las reglas y los reportes dieron los resultados esperados.
 
 ## 6. Uso de inteligencia artificial
 Según lo que pide el syllabus de la materia (sección 1.5), se declara que se usó Claude Code (modelo Claude Opus 5.5, de Anthropic)
-para diseñar el modelo y escribir el código, los datos de prueba, las pruebas y este informe.
+para diseñar el modelo y escribir el código, los datos de prueba, las pruebas y este informe, y para hacer las revisiones que cuenta la bitácora.
 
 Los criterios y las decisiones del trabajo fueron del estudiante: mantener la solución simple y limitada a lo visto en el curso,
 aportar la letra y los materiales para contrastar el resultado, pedir las revisiones y decidir qué se quitaba y qué se dejaba.
