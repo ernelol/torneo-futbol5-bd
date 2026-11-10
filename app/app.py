@@ -2,11 +2,10 @@
 
 Aquí están las pantallas y acciones. Los campos se validan en validacion.py
 y las reglas de negocio de la letra están en reglas.py."""
-# Imports: traemos lo que vamos a usar.
-# - flask: arma el servidor web, las pantallas y la sesión del usuario.
-# - pymysql: la librería que habla con MySQL. La usamos sin ORM: todo el SQL está escrito a mano.
-# - check_password_hash: compara la contraseña que escriben con el hash guardado en la base.
-# - db, reglas, validacion, opciones, reportes: son nuestros otros archivos.
+# Flask arma el servidor, las pantallas y la sesión del usuario.
+# pymysql es la librería para hablar con MySQL (no usamos ORM, el SQL lo escribimos nosotros).
+# check_password_hash compara la contraseña que escriben con el hash guardado en la base.
+# db, reglas, validacion, opciones y reportes son nuestros otros archivos.
 import os
 from datetime import date
 from functools import wraps
@@ -22,22 +21,22 @@ from opciones import (COLORES_TARJETA, DEPARTAMENTOS, ESTADO_JUGADO, ESTADOS_PAR
                       MOTIVOS_SANCION, ROL_ADMIN, ROL_PLANILLERO, SUPERFICIES, TIPOS_JUGADOR)
 from reportes import REPORTES
 
-# Creamos la aplicación. La secret_key firma la cookie de sesión, para que nadie pueda falsear su rol.
+# La secret_key firma la cookie de sesión, así nadie puede cambiarse el rol a mano.
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "clave-de-desarrollo")
-# Al terminar cada pedido, Flask llama a db.cerrar: así la conexión a MySQL siempre se cierra.
+# Cuando termina cada pedido, Flask llama a db.cerrar y la conexión con MySQL se cierra.
 app.teardown_appcontext(db.cerrar)
 
 
-# Para las pantallas: convierte un valor de la base en texto lindo (en_curso -> En curso).
-# Si el valor no tiene etiqueta, lo deja como está. Las plantillas lo usan así: {{ valor|etiqueta }}
+# Para las pantallas: pasa un valor de la base a texto para mostrar (por ejemplo, en_curso a "En curso").
+# Si no tiene traducción, queda igual.
 @app.template_filter("etiqueta")
 def etiqueta(valor):
     return ETIQUETAS.get(valor, valor)
 
 
-# Para las pantallas: lo que devuelve esta función queda disponible en todas las plantillas HTML.
-# Así las listas desplegables se arman con los mismos valores que valida el backend.
+# Lo que devuelve esta función lo pueden usar todas las plantillas HTML.
+# Así las listas de los formularios usan los mismos valores que después valida el backend.
 @app.context_processor
 def opciones_para_plantillas():
     return dict(TIPOS_JUGADOR=TIPOS_JUGADOR, ESTADOS_TORNEO=ESTADOS_TORNEO, ESTADOS_PARTIDO=ESTADOS_PARTIDO,
@@ -47,12 +46,11 @@ def opciones_para_plantillas():
 
 # ---------------------------------------------------------------- utilidades
 
-# CONTROL DE ROL. Se usa arriba de cada pantalla, por ejemplo @requiere(ROL_ADMIN).
-# Antes de ejecutar la pantalla mira el rol guardado en la sesión:
-# - si el rol no está permitido (o no inició sesión), lo manda al login;
-# - si está permitido, ejecuta la pantalla normalmente.
-# Son tres funciones una dentro de otra porque así funcionan los decoradores de Python.
-# @wraps(vista) mantiene el nombre original de la función, que Flask necesita para distinguir cada pantalla.
+# Control de rol. Se pone arriba de cada pantalla, por ejemplo @requiere(ROL_ADMIN).
+# Antes de mostrar la pantalla, mira el rol que quedó guardado en la sesión.
+# Si no inició sesión o su rol no está permitido, lo manda al login.
+# Son tres funciones una dentro de otra porque así se arma un decorador con parámetros en Python.
+# @wraps mantiene el nombre de la función original, que Flask necesita para distinguir cada pantalla.
 def requiere(*roles):
     def decorador(vista):
         @wraps(vista)
@@ -64,13 +62,11 @@ def requiere(*roles):
     return decorador
 
 
-# TRANSACCIÓN: acá está el "todo o nada" (la A de ACID). Es lo mismo que transferir() de la diapositiva 18.
-# Recibe "accion", una función con todos los pasos a hacer en la base:
-# - Si todos salen bien, commit: los cambios quedan guardados y mostramos el mensaje de éxito.
-# - Si algo falla, rollback: se deshace TODO lo hecho en esta acción y mostramos el error.
-# Hay dos tipos de error:
-# - ValueError: lo lanzamos nosotros, desde validacion.py o reglas.py. Su texto ya está pensado para el usuario.
-# - pymysql.MySQLError: lo devuelve la base (clave repetida, FK, CHECK, permisos). db.mensaje_error lo traduce.
+# Acá está la transacción: o se guarda todo, o no se guarda nada.
+# "accion" es una función con todos los pasos que hay que hacer en la base.
+# Si salen bien, hacemos commit y queda guardado. Si algo falla, hacemos rollback y se deshace todo lo de esa acción.
+# ValueError son los errores que lanzamos nosotros (en validacion.py o reglas.py), con un mensaje ya pensado para el usuario.
+# MySQLError son los que devuelve la base (clave repetida, FK, CHECK o falta de permiso), y db.mensaje_error los traduce.
 def realizar(accion, mensaje_exito: str) -> None:
     """Ejecuta la acción en una transacción y muestra el resultado al usuario."""
     try:
@@ -85,14 +81,14 @@ def realizar(accion, mensaje_exito: str) -> None:
         flash(db.mensaje_error(error), "error")
 
 
-# Vuelve a la pantalla desde donde vino el usuario (si no se sabe cuál es, a la de inicio).
+# Vuelve a la pantalla desde la que vino el usuario. Si no se sabe cuál es, va al inicio.
 def volver():
     return redirect(request.referrer or url_for("inicio"))
 
 
-# Varias pantallas muestran un selector de torneo. Esta función trae todos los torneos y elige uno:
-# el que venga en la dirección (?torneo=2) o, si no viene ninguno, el primero de la lista.
-# El ORDER BY pone primero el que está en curso: estado = 'en_curso' vale 1 o 0, y DESC ordena el 1 antes.
+# Varias pantallas tienen un selector de torneo. Esta función trae todos y elige el que viene en la dirección (?torneo=2).
+# Si no viene ninguno, elige el primero de la lista.
+# El ORDER BY pone primero el que está en curso: estado = 'en_curso' da 1 o 0, y con DESC el 1 queda arriba.
 def torneos_y_elegido() -> tuple[list[dict], dict | None]:
     """Lista de torneos y el elegido en ?torneo=; por defecto, el que está en curso."""
     torneos = db.consultar("SELECT * FROM torneo ORDER BY estado = 'en_curso' DESC, anio DESC, semestre DESC")
@@ -102,32 +98,31 @@ def torneos_y_elegido() -> tuple[list[dict], dict | None]:
     return torneos, torneos[0] if torneos else None
 
 
-# De una lista de filas saca los valores de una columna, como texto y sin repetir.
-# Sirve para controlar que lo que eligió el usuario en una lista desplegable exista de verdad.
-# Es texto porque lo que llega de un formulario siempre es texto.
+# Saca los valores de una columna como texto y sin repetir.
+# La usamos para comprobar que lo que eligió el usuario en una lista exista de verdad (lo del formulario siempre llega como texto).
 def ids(filas: list[dict], columna: str) -> set[str]:
     return {str(fila[columna]) for fila in filas}
 
 
 # ---------------------------------------------------------------- sesión
 
-# Pantalla de inicio de sesión. GET muestra el formulario; POST es cuando el usuario lo envía.
+# Inicio de sesión. Con GET se muestra el formulario y con POST llegan los datos que escribió el usuario.
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        # Vaciamos la sesión: sin rol, db.py se conecta con torneo_login, que solo puede leer la tabla login.
+        # Borramos la sesión. Sin rol, db.py se conecta con torneo_login, que solo puede leer la tabla login.
         session.clear()
-        # Validamos los campos en el backend. Si algo está mal, avisamos sin consultar la base.
+        # Primero validamos los campos. Si algo está mal, avisamos sin consultar la base.
         try:
             correo = v.email(request.form, "correo")
             contrasena = v.texto(request.form, "contrasena", 255)
         except ValueError as error:
             flash(str(error), "error")
             return render_template("login.html")
-        # %s es un parámetro: el correo nunca se pega dentro del SQL, por eso no hay inyección SQL.
+        # El correo va como parámetro (%s) y nunca pegado dentro del SQL, por eso no hay inyección.
         usuario = db.consultar_uno("SELECT contrasena, rol FROM login WHERE correo = %s", (correo,))
-        # Comparamos contra el hash: en la base nunca se guarda la contraseña real.
-        # Si coincide, guardamos correo y rol en la sesión. Desde ahora, db.py usa el usuario de base de ese rol.
+        # En la base solo está el hash, nunca la contraseña real.
+        # Si coincide, guardamos el correo y el rol en la sesión, y desde ahí db.py usa el usuario de MySQL de ese rol.
         if usuario and check_password_hash(usuario["contrasena"], contrasena):
             session["correo"] = correo
             session["rol"] = usuario["rol"]
@@ -136,14 +131,14 @@ def login():
     return render_template("login.html")
 
 
-# Cerrar sesión: vaciamos la sesión y volvemos al login.
+# Cerrar sesión: se borra la sesión y vuelve al login.
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
 
 
-# La página principal lleva directo a la lista de partidos.
+# La página principal lleva directo a los partidos.
 @app.route("/")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def inicio():
@@ -152,9 +147,8 @@ def inicio():
 
 # ---------------------------------------------------------------- torneos
 
-# Muestra los torneos y el formulario.
-# Si la dirección trae ?editar=1, buscamos ese torneo para llenar el formulario y poder modificarlo.
-# Si no trae nada, editando queda vacío y el formulario sirve para crear uno nuevo.
+# Lista de torneos con su formulario.
+# Si la dirección trae ?editar=1, buscamos ese torneo para cargarlo en el formulario. Si no, el formulario sirve para crear uno nuevo.
 @app.route("/torneos")
 @requiere(ROL_ADMIN)
 def torneos():
@@ -163,21 +157,20 @@ def torneos():
                            editando=editando)
 
 
-# Alta o modificación de un torneo. TODAS las acciones de este archivo siguen el mismo patrón:
-# 1. Se define accion() con los pasos: validar campos, controlar reglas y ejecutar el SQL.
-# 2. realizar() la ejecuta dentro de una transacción (commit si salió bien, rollback si no).
-# 3. Se vuelve a una pantalla, que muestra el mensaje de éxito o de error.
+# Alta o modificación de un torneo.
+# Todas las acciones de este archivo se arman igual: accion() valida los campos, controla las reglas y ejecuta el SQL,
+# realizar() la corre dentro de una transacción, y después volvemos a una pantalla que muestra el mensaje.
 @app.post("/torneos/guardar")
 @requiere(ROL_ADMIN)
 def guardar_torneo():
     def accion():
-        # f son los datos que mandó el formulario. Cada campo pasa por su validación (ver validacion.py).
+        # f tiene los datos del formulario. Cada campo pasa por su validación (ver validacion.py).
         f = request.form
         nombre, anio, semestre = v.texto(f, "nombre", 100), v.entero(f, "anio", 2000, 2100), v.entero(f, "semestre", 1, 2)
         inicio, fin, estado = v.fecha(f, "fecha_inicio"), v.fecha(f, "fecha_fin"), v.opcion(f, "estado", ESTADOS_TORNEO)
         if fin < inicio:
             raise ValueError("La fecha de fin no puede ser anterior a la de inicio.")
-        # Si el formulario trae id es una modificación (UPDATE); si no trae, es un alta (INSERT).
+        # Si el formulario trae un id, estamos modificando (UPDATE). Si no, es un alta (INSERT).
         if f.get("id_torneo"):
             reglas.verificar_cambio_de_estado(f["id_torneo"], estado)
             db.ejecutar("""UPDATE torneo SET nombre = %s, anio = %s, semestre = %s, fecha_inicio = %s,
@@ -190,7 +183,7 @@ def guardar_torneo():
     return redirect(url_for("torneos"))
 
 
-# Baja. Si el torneo ya tiene equipos, la FK no deja borrarlo y realizar() muestra el error.
+# Baja de un torneo. Si ya tiene equipos, la FK no lo deja borrar y realizar() muestra el error.
 @app.post("/torneos/<int:id_torneo>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_torneo(id_torneo):
@@ -202,7 +195,7 @@ def eliminar_torneo(id_torneo):
 
 # ---------------------------------------------------------------- jugadores
 
-# Lista de jugadores con el nombre de su facultad (JOIN), y el formulario de alta o modificación.
+# Lista de jugadores con el nombre de su facultad (JOIN) y el formulario.
 @app.route("/jugadores")
 @requiere(ROL_ADMIN)
 def jugadores():
@@ -218,14 +211,14 @@ def jugadores():
 @requiere(ROL_ADMIN)
 def guardar_jugador():
     def accion():
-        # facultades: las que existen, para controlar que la elegida sea válida.
+        # facultades son las que existen, para comprobar que la elegida sea válida.
         f = request.form
         facultades = ids(db.consultar("SELECT id_facultad FROM facultad"), "id_facultad")
         nombre, apellido, email = v.texto(f, "nombre", 50), v.texto(f, "apellido", 50), v.email(f)
         nacimiento = v.fecha_pasada(f, "fecha_nacimiento")
         facultad, tipo = v.opcion(f, "id_facultad", facultades), v.opcion(f, "tipo", TIPOS_JUGADOR)
-        # "original" es la cédula del jugador que se está modificando. La cédula es la clave primaria y no se cambia.
-        # Si no viene, es un alta: recién ahí se valida la cédula nueva.
+        # "original" es la cédula del jugador que se está modificando. La cédula es la clave, así que no se cambia.
+        # Si no viene, es un alta, y recién ahí validamos la cédula nueva.
         if f.get("original"):
             reglas.verificar_cambio_de_jugador(f["original"], facultad, tipo)
             db.ejecutar("""UPDATE jugador SET nombre = %s, apellido = %s, email = %s, fecha_nacimiento = %s,
@@ -239,7 +232,7 @@ def guardar_jugador():
     return redirect(url_for("jugadores"))
 
 
-# Baja. Si el jugador está en un plantel, la FK no deja borrarlo.
+# Baja de un jugador. Si está en un plantel, la FK no lo deja borrar.
 @app.post("/jugadores/<ci>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_jugador(ci):
@@ -251,9 +244,9 @@ def eliminar_jugador(ci):
 
 # ---------------------------------------------------------------- equipos y planteles
 
-# Equipos del torneo elegido, con su facultad y su capitán.
-# LEFT JOIN con jugador: aparecen también los equipos sin capitán (quedan con NULL).
-# La subconsulta del SELECT cuenta cuántos jugadores tiene cada equipo.
+# Equipos del torneo elegido, con su facultad, su capitán y la cantidad de jugadores.
+# LEFT JOIN con jugador para que también salgan los equipos que todavía no tienen capitán.
+# La subconsulta del SELECT cuenta los jugadores de cada equipo.
 @app.route("/equipos")
 @requiere(ROL_ADMIN)
 def equipos():
@@ -263,14 +256,14 @@ def equipos():
                             FROM equipo e JOIN facultad f ON f.id_facultad = e.id_facultad
                             LEFT JOIN jugador j ON j.ci = e.ci_capitan
                             WHERE e.id_torneo = %s ORDER BY e.nombre""", (torneo["id_torneo"] if torneo else None,))
-    # Si se está modificando un equipo, traemos su plantel para elegir el capitán de esa lista.
+    # Si se está modificando un equipo, traemos su plantel para elegir el capitán de ahí.
     editando = db.consultar_uno("SELECT * FROM equipo WHERE id_equipo = %s", (request.args.get("editar"),))
     plantel = plantel_de(editando["id_equipo"]) if editando else []
     return render_template("equipos.html", torneos=torneos, torneo=torneo, equipos=lista, editando=editando,
                            plantel=plantel, facultades=db.consultar("SELECT * FROM facultad ORDER BY nombre"))
 
 
-# Jugadores de un equipo, ordenados por camiseta. La usan varias pantallas.
+# Los jugadores de un equipo, ordenados por camiseta.
 def plantel_de(id_equipo: int) -> list[dict]:
     return db.consultar("""SELECT ejt.*, j.nombre, j.apellido, j.tipo FROM equipo_jugador_torneo ejt
                            JOIN jugador j ON j.ci = ejt.ci_jugador
@@ -285,15 +278,15 @@ def guardar_equipo():
         f = request.form
         facultades = ids(db.consultar("SELECT id_facultad FROM facultad"), "id_facultad")
         nombre, facultad = v.texto(f, "nombre", 60), v.opcion(f, "id_facultad", facultades)
-        # Modificación: no se puede cambiar la facultad si ya tiene jugadores, y el capitán debe ser del plantel.
-        # Si no eligieron capitán llega vacío, y "or None" lo convierte en NULL.
+        # Al modificar: si ya tiene jugadores no puede cambiar de facultad, y el capitán tiene que ser de su plantel.
+        # Si no eligieron capitán llega vacío, y con "or None" queda NULL.
         if f.get("id_equipo"):
             reglas.verificar_cambio_de_facultad(f["id_equipo"], facultad)
             capitan = f.get("ci_capitan") or None
             reglas.verificar_capitan(f["id_equipo"], capitan)
             db.ejecutar("UPDATE equipo SET nombre = %s, id_facultad = %s, ci_capitan = %s WHERE id_equipo = %s",
                         (nombre, facultad, capitan, f["id_equipo"]))
-        # Alta: un equipo nuevo solo se puede crear durante la inscripción.
+        # Un equipo nuevo solo se puede crear mientras el torneo está en inscripción.
         else:
             reglas.verificar_inscripcion(f["id_torneo"])
             db.ejecutar("INSERT INTO equipo (nombre, id_facultad, id_torneo) VALUES (%s, %s, %s)",
@@ -302,8 +295,7 @@ def guardar_equipo():
     return volver()
 
 
-# Baja de un equipo, solo durante la inscripción.
-# Si ya tiene partidos, la FK no deja borrarlo.
+# Baja de un equipo, solo en inscripción. Si ya tiene partidos, la FK no lo deja borrar.
 @app.post("/equipos/<int:id_equipo>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_equipo(id_equipo):
@@ -315,7 +307,7 @@ def eliminar_equipo(id_equipo):
     return volver()
 
 
-# Pantalla del plantel de un equipo: los jugadores que tiene y los que se pueden agregar.
+# El plantel de un equipo: los jugadores que tiene y los que se le pueden agregar.
 @app.route("/equipos/<int:id_equipo>/plantel")
 @requiere(ROL_ADMIN)
 def plantel(id_equipo):
@@ -331,8 +323,7 @@ def plantel(id_equipo):
     return render_template("plantel.html", equipo=equipo, plantel=plantel_de(id_equipo), disponibles=disponibles)
 
 
-# Agrega un jugador al plantel.
-# La reserva con FOR UPDATE tiene que ir antes que cualquier otra consulta de la transacción.
+# Agrega un jugador al plantel. La reserva con FOR UPDATE tiene que ser la primera consulta de la transacción.
 @app.post("/equipos/<int:id_equipo>/plantel/agregar")
 @requiere(ROL_ADMIN)
 def agregar_al_plantel(id_equipo):
@@ -348,7 +339,7 @@ def agregar_al_plantel(id_equipo):
     return volver()
 
 
-# Quita un jugador del plantel, solo durante la inscripción y si no es el capitán.
+# Quita un jugador del plantel. Solo en inscripción, y no si es el capitán.
 @app.post("/equipos/<int:id_equipo>/plantel/<ci>/quitar")
 @requiere(ROL_ADMIN)
 def quitar_del_plantel(id_equipo, ci):
@@ -364,7 +355,7 @@ def quitar_del_plantel(id_equipo, ci):
 
 # ---------------------------------------------------------------- complejos y canchas
 
-# Lista de complejos y de canchas (con JOIN para mostrar el nombre del complejo de cada cancha).
+# Lista de complejos y de canchas. El JOIN es para mostrar el nombre del complejo de cada cancha.
 @app.route("/complejos")
 @requiere(ROL_ADMIN)
 def complejos():
@@ -393,7 +384,7 @@ def guardar_complejo():
     return redirect(url_for("complejos"))
 
 
-# Baja. Si el complejo tiene canchas, la FK no deja borrarlo.
+# Baja de un complejo. Si tiene canchas, la FK no lo deja borrar.
 @app.post("/complejos/<int:id_complejo>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_complejo(id_complejo):
@@ -403,7 +394,7 @@ def eliminar_complejo(id_complejo):
     return redirect(url_for("complejos"))
 
 
-# Alta o modificación de una cancha. Su clave es el nombre junto con el complejo.
+# Alta o modificación de una cancha. La cancha se identifica por su nombre y su complejo.
 @app.post("/canchas/guardar")
 @requiere(ROL_ADMIN)
 def guardar_cancha():
@@ -413,7 +404,7 @@ def guardar_cancha():
         complejos_validos = ids(db.consultar("SELECT id_complejo FROM complejo"), "id_complejo")
         nombre, complejo = v.texto(f, "nombre_cancha", 40), v.opcion(f, "id_complejo", complejos_validos)
         superficie, techada = v.opcion(f, "superficie", SUPERFICIES), v.casilla(f, "techada")
-        # SELECT 1 solo pregunta si existe. Si ya existe la modificamos; si no, la creamos.
+        # SELECT 1 solo pregunta si existe. Si existe la modificamos, y si no la creamos.
         if db.consultar("SELECT 1 FROM cancha WHERE nombre_cancha = %s AND id_complejo = %s", (nombre, complejo)):
             db.ejecutar("UPDATE cancha SET superficie = %s, techada = %s WHERE nombre_cancha = %s AND id_complejo = %s",
                         (superficie, techada, nombre, complejo))
@@ -424,7 +415,7 @@ def guardar_cancha():
     return redirect(url_for("complejos"))
 
 
-# Baja. Si la cancha tiene partidos, la FK no deja borrarla.
+# Baja de una cancha. Si tiene partidos, la FK no la deja borrar.
 @app.post("/canchas/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_cancha():
@@ -437,9 +428,8 @@ def eliminar_cancha():
 
 # ---------------------------------------------------------------- partidos
 
-# Lista de partidos del torneo elegido. La ven el administrador y el planillero.
-# Usa alias porque equipo aparece dos veces: el (equipo local) y ev (equipo visitante).
-# Los goles salen de la vista resultado_partido.
+# Partidos del torneo elegido. Los ven el administrador y el planillero.
+# Unimos equipo dos veces, con los alias el (local) y ev (visitante). Los goles salen de la vista resultado_partido.
 @app.route("/partidos")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def partidos():
@@ -454,8 +444,8 @@ def partidos():
                             JOIN complejo co ON co.id_complejo = p.id_complejo
                             JOIN resultado_partido r ON r.id_partido = p.id_partido
                             WHERE p.id_torneo = %s ORDER BY p.numero_fecha, p.dia, t.hora_inicio""", (id_torneo,))
-    # Solo el administrador ve el formulario. Por eso solo él consulta canchas:
-    # torneo_planillero no tiene permiso de leer esa tabla, y la consulta daría error.
+    # El formulario es solo para el administrador, así que solo él consulta las canchas.
+    # El usuario del planillero no puede leer la tabla cancha y daría error.
     opciones, editando = None, None
     if session["rol"] == ROL_ADMIN:  # el formulario es solo para el administrador
         opciones = opciones_de_partido(id_torneo)
@@ -464,7 +454,7 @@ def partidos():
                            opciones=opciones, editando=editando)
 
 
-# Las listas para el formulario de partidos: equipos del torneo, turnos y canchas.
+# Las listas del formulario de partidos: equipos del torneo, turnos y canchas.
 def opciones_de_partido(id_torneo) -> dict:
     return dict(
         equipos=db.consultar("SELECT id_equipo, nombre FROM equipo WHERE id_torneo = %s ORDER BY nombre", (id_torneo,)),
@@ -480,15 +470,15 @@ def opciones_de_partido(id_torneo) -> dict:
 def guardar_partido():
     def accion():
         f = request.form
-        # Primero reservamos el torneo con FOR UPDATE. Si otro está programando, esperamos a que termine.
+        # Primero reservamos el torneo con FOR UPDATE. Si otro administrador está programando, esperamos a que termine.
         reglas.reservar_torneo(f["id_torneo"])
         opciones = opciones_de_partido(f.get("id_torneo"))
         equipos_validos = ids(opciones["equipos"], "id_equipo")
-        # La cancha se identifica por complejo y nombre, y en el formulario viaja junta: "1|Cancha 1".
-        # Controlamos que exista y la separamos en sus dos partes con split.
+        # En el formulario la cancha viaja como "1|Cancha 1" (complejo y nombre juntos).
+        # Comprobamos que exista y la separamos con split.
         canchas_validas = {f"{c['id_complejo']}|{c['nombre_cancha']}" for c in opciones["canchas"]}
         id_complejo, nombre_cancha = v.opcion(f, "cancha", canchas_validas).split("|", 1)
-        # Guardamos todos los datos validados en un diccionario, con los nombres de las columnas de la tabla.
+        # Juntamos todos los datos validados en un diccionario, con los nombres de las columnas.
         partido = {
             "id_partido": f.get("id_partido"),
             "id_torneo": f["id_torneo"],
@@ -503,10 +493,10 @@ def guardar_partido():
         }
         if partido["id_equipo_local"] == partido["id_equipo_visitante"]:
             raise ValueError("Un equipo no puede enfrentarse a sí mismo.")
-        # Si ya existe y está jugado, no se puede modificar.
+        # Si el partido ya existe y está jugado, no se puede modificar.
         if partido["id_partido"]:
             reglas.verificar_partido_no_jugado(partido["id_partido"])
-        # Los controles de la letra: plantel, rival, fecha, cancha y horario (ver reglas.py).
+        # Los controles de la letra: planteles, rival, fecha, cancha y horario (ver reglas.py).
         reglas.verificar_partido(partido)
         # %(columna)s toma cada valor del diccionario partido
         if partido["id_partido"]:
@@ -523,7 +513,7 @@ def guardar_partido():
     return volver()
 
 
-# Baja de un partido, salvo que ya esté jugado. Su planilla se borra en cascada.
+# Baja de un partido, salvo que ya se haya jugado. Su planilla se borra con él, en cascada.
 @app.post("/partidos/<int:id_partido>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_partido(id_partido):
@@ -536,8 +526,8 @@ def eliminar_partido(id_partido):
 
 # ---------------------------------------------------------------- planilla, goles y tarjetas
 
-# Pantalla de la planilla: trae los datos del partido, quién está en la planilla, quién se puede agregar,
-# los goles y las tarjetas. Son solo consultas (SELECT), para mostrar.
+# Pantalla de la planilla. Son solo consultas para mostrar:
+# el partido, quién está en la planilla, quién se puede agregar, los goles y las tarjetas.
 @app.route("/partidos/<int:id_partido>/planilla")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def planilla(id_partido):
@@ -570,8 +560,8 @@ def planilla(id_partido):
                            goles=goles, tarjetas=tarjetas)
 
 
-# Agrega un jugador a la planilla. Controla que el partido se pueda editar,
-# y que el jugador sea de uno de los dos equipos y no esté suspendido.
+# Agrega un jugador a la planilla. Antes comprobamos que el partido se pueda editar,
+# que el jugador sea de uno de los dos equipos y que no esté suspendido.
 @app.post("/partidos/<int:id_partido>/planilla/agregar")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def agregar_a_planilla(id_partido):
@@ -585,7 +575,7 @@ def agregar_a_planilla(id_partido):
     return volver()
 
 
-# Quita un jugador. Sus goles y tarjetas de este partido se borran en cascada (y las sanciones de esas tarjetas).
+# Quita un jugador de la planilla. Sus goles y tarjetas de este partido se borran en cascada, y con ellas sus sanciones.
 @app.post("/partidos/<int:id_partido>/planilla/<ci>/quitar")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def quitar_de_planilla(id_partido, ci):
@@ -596,7 +586,7 @@ def quitar_de_planilla(id_partido, ci):
     return volver()
 
 
-# Registra un gol. El resultado no se guarda: se calcula después, contando los goles.
+# Registra un gol. El resultado no se guarda en ningún lado: se calcula contando los goles.
 # Si el jugador no está en la planilla, la FK de gol lo rechaza.
 @app.post("/partidos/<int:id_partido>/goles")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
@@ -610,7 +600,7 @@ def agregar_gol(id_partido):
     return volver()
 
 
-# Borra un gol. Buscamos primero su partido, para controlar si todavía se puede corregir.
+# Borra un gol. Primero buscamos su partido para ver si todavía se puede corregir.
 @app.post("/goles/<int:id_gol>/eliminar")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def eliminar_gol(id_gol):
@@ -622,8 +612,8 @@ def eliminar_gol(id_gol):
     return volver()
 
 
-# Registra una tarjeta y, si corresponde, la sanción automática.
-# db.insertar devuelve el id de la tarjeta nueva, porque la sanción guarda qué tarjeta la generó.
+# Registra una tarjeta y, si corresponde, la sanción.
+# db.insertar devuelve el id de la tarjeta nueva, que guardamos en la sanción para saber de dónde salió.
 @app.post("/partidos/<int:id_partido>/tarjetas")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def agregar_tarjeta(id_partido):
@@ -638,7 +628,7 @@ def agregar_tarjeta(id_partido):
     return volver()
 
 
-# Borra una tarjeta. La sanción que generó se borra en cascada (ON DELETE CASCADE).
+# Borra una tarjeta. La sanción que generó se borra sola (ON DELETE CASCADE).
 @app.post("/tarjetas/<int:id_tarjeta>/eliminar")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def eliminar_tarjeta(id_tarjeta):
@@ -650,8 +640,8 @@ def eliminar_tarjeta(id_tarjeta):
     return volver()
 
 
-# Marca el partido como jugado. Es lo único que el planillero puede cambiar de la tabla partido:
-# GRANT UPDATE (estado). Antes repetimos los controles con el estado nuevo, entre ellos que el turno ya haya pasado.
+# Marca el partido como jugado. Es lo único de la tabla partido que puede cambiar el planillero (GRANT UPDATE (estado)).
+# Antes repetimos los controles con el estado nuevo, entre ellos que el turno ya haya terminado.
 @app.post("/partidos/<int:id_partido>/jugado")
 @requiere(ROL_ADMIN, ROL_PLANILLERO)
 def marcar_jugado(id_partido):
@@ -667,7 +657,7 @@ def marcar_jugado(id_partido):
 
 # ---------------------------------------------------------------- sanciones
 
-# Sanciones del torneo elegido. Para mostrar el equipo del jugador, unimos con el plantel por cédula y torneo.
+# Sanciones del torneo elegido. Para saber el equipo del jugador lo buscamos en el plantel, por cédula y torneo.
 @app.route("/sanciones")
 @requiere(ROL_ADMIN)
 def sanciones():
@@ -691,7 +681,7 @@ def jugadores_del_torneo(id_torneo) -> list[dict]:
 
 
 # Alta o modificación de una sanción, normalmente disciplinaria.
-# Las automáticas por tarjeta se crean en reglas.sancionar_por_tarjeta.
+# Las de las tarjetas no se cargan acá: las crea reglas.sancionar_por_tarjeta.
 @app.post("/sanciones/guardar")
 @requiere(ROL_ADMIN)
 def guardar_sancion():
@@ -710,7 +700,7 @@ def guardar_sancion():
     return volver()
 
 
-# Baja. Sirve, por ejemplo, si se corrigió una amarilla y la suspensión ya no corresponde.
+# Baja de una sanción. Sirve, por ejemplo, si se corrigió una amarilla y la suspensión ya no corresponde.
 @app.post("/sanciones/<int:id_sancion>/eliminar")
 @requiere(ROL_ADMIN)
 def eliminar_sancion(id_sancion):
@@ -722,8 +712,8 @@ def eliminar_sancion(id_sancion):
 
 # ---------------------------------------------------------------- reportes
 
-# Ejecuta todas las consultas de reportes.py para el torneo elegido y las muestra en tablas.
-# La plantilla usa los alias de cada consulta como títulos de las columnas.
+# Corre todas las consultas de reportes.py para el torneo elegido y las muestra en tablas.
+# Los títulos de las columnas son los alias de cada consulta.
 @app.route("/reportes")
 @requiere(ROL_ADMIN)
 def reportes():
@@ -733,6 +723,6 @@ def reportes():
     return render_template("reportes.html", torneos=torneos, torneo=torneo, resultados=resultados)
 
 
-# Arranca el servidor al ejecutar: python app.py. 0.0.0.0 permite entrar desde fuera del contenedor de Docker.
+# Arranca el servidor con python app.py. Con 0.0.0.0 se puede entrar desde fuera del contenedor de Docker.
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=os.getenv("FLASK_DEBUG") == "1")

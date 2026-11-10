@@ -5,36 +5,36 @@ from opciones import (ESTADO_CANCELADO, ESTADO_EN_CURSO, ESTADO_FINALIZADO, ESTA
                       ESTADO_POSTERGADO, ESTADO_PROGRAMADO, ESTADOS_TORNEO, MOTIVO_AMARILLAS, MOTIVO_ROJA, TARJETA_ROJA,
                       TIPOS_LIMITADOS)
 
-# Los números de la letra, con nombre, para no tenerlos sueltos por el código.
+# Los números que pide la letra, con nombre para no tenerlos sueltos en el código.
 MINIMO_PLANTEL = 5
 MAXIMO_PLANTEL = 10
 MAXIMO_DOCENTES_FUNCIONARIOS = 2
 AMARILLAS_PARA_SUSPENSION = 3
 
 
-# Cuántos jugadores tiene un equipo. ['n'] saca el valor del alias AS n.
+# Cuántos jugadores tiene un equipo. Con ["n"] sacamos el valor del alias AS n.
 def cantidad_en_plantel(id_equipo) -> int:
     return db.consultar_uno("SELECT COUNT(*) AS n FROM equipo_jugador_torneo WHERE id_equipo = %s", (id_equipo,))["n"]
 
 
 # ---------------------------------------------------------------- torneo
 
-# La letra: los planteles solo se modifican mientras el torneo está en inscripción.
+# Según la letra, los planteles solo se pueden tocar mientras el torneo está en inscripción.
 def verificar_inscripcion(id_torneo) -> None:
     torneo = db.consultar_uno("SELECT estado FROM torneo WHERE id_torneo = %s", (id_torneo,))
     if torneo["estado"] != ESTADO_INSCRIPCION:
         raise ValueError("Equipos y planteles solo pueden modificarse durante la inscripción.")
 
 
-# Las etapas solo avanzan: inscripción -> en curso -> finalizado.
-# Comparamos posiciones en la lista: si la nueva está antes que la actual, es un retroceso.
+# Las etapas solo avanzan: inscripción, en curso, finalizado.
+# Comparamos la posición de cada estado en la lista: si el nuevo está antes que el actual, es volver para atrás.
 def verificar_cambio_de_estado(id_torneo, estado_nuevo: str) -> None:
     estado_actual = db.consultar_uno("SELECT estado FROM torneo WHERE id_torneo = %s", (id_torneo,))["estado"]
     etapas = list(ESTADOS_TORNEO)
     if etapas.index(estado_nuevo) < etapas.index(estado_actual):
         raise ValueError("El estado del torneo no puede volver a una etapa anterior.")
-    # Al cerrar la inscripción los planteles quedan fijos, así que controlamos que estén completos:
-    # cada equipo tiene que tener capitán y al menos 5 jugadores.
+    # Cuando se cierra la inscripción los planteles ya no se pueden cambiar,
+    # así que antes revisamos que cada equipo tenga capitán y al menos 5 jugadores.
     if estado_actual == ESTADO_INSCRIPCION and estado_nuevo != ESTADO_INSCRIPCION:
         for equipo in db.consultar("SELECT id_equipo, ci_capitan FROM equipo WHERE id_torneo = %s", (id_torneo,)):
             if equipo["ci_capitan"] is None or cantidad_en_plantel(equipo["id_equipo"]) < MINIMO_PLANTEL:
@@ -44,9 +44,9 @@ def verificar_cambio_de_estado(id_torneo, estado_nuevo: str) -> None:
 
 # ---------------------------------------------------------------- jugadores, equipos y planteles
 
-# Si el jugador ya está en un plantel, no puede cambiar de facultad ni de tipo,
-# porque dejarían de valer los controles que se hicieron al agregarlo.
-# Usamos str() porque el formulario manda texto y la base devuelve un número.
+# Si el jugador ya está en un plantel, no le dejamos cambiar la facultad ni el tipo,
+# porque se romperían los controles que se hicieron al agregarlo.
+# Usamos str() porque del formulario llega texto y de la base llega un número.
 def verificar_cambio_de_jugador(ci, id_facultad, tipo) -> None:
     actual = db.consultar_uno("SELECT id_facultad, tipo FROM jugador WHERE ci = %s", (ci,))
     cambia = str(actual["id_facultad"]) != str(id_facultad) or actual["tipo"] != tipo
@@ -54,22 +54,24 @@ def verificar_cambio_de_jugador(ci, id_facultad, tipo) -> None:
         raise ValueError("No se puede cambiar facultad o tipo de un jugador que integra un plantel.")
 
 
-# Todos los jugadores son de la facultad del equipo: con jugadores adentro, no se puede cambiar.
+# Todos los jugadores son de la facultad del equipo, así que con jugadores adentro no se puede cambiar.
 def verificar_cambio_de_facultad(id_equipo, id_facultad) -> None:
     actual = db.consultar_uno("SELECT id_facultad FROM equipo WHERE id_equipo = %s", (id_equipo,))
     if str(actual["id_facultad"]) != str(id_facultad) and cantidad_en_plantel(id_equipo) > 0:
         raise ValueError("No se puede cambiar la facultad de un equipo que ya tiene jugadores.")
 
 
-# La letra: el capitán debe ser uno de sus jugadores. Si ci está vacío, es que el equipo queda sin capitán.
+# El capitán tiene que ser uno de sus jugadores. La FK de ci_capitan solo asegura que el jugador exista.
+# Si ci viene vacío, el equipo queda sin capitán y no hay nada que revisar.
 def verificar_capitan(id_equipo, ci) -> None:
     if ci and not db.consultar("SELECT 1 FROM equipo_jugador_torneo WHERE id_equipo = %s AND ci_jugador = %s",
                                (id_equipo, ci)):
         raise ValueError("El capitán debe ser un jugador del plantel.")
 
 
-# Controles de la letra para agregar un jugador a un plantel: que siga la inscripción,
-# misma facultad, máximo 10 jugadores y máximo 2 docentes/funcionarios.
+# Lo que pide la letra para sumar un jugador: que siga la inscripción, que sea de la misma facultad,
+# que el plantel no tenga ya 10 y que no se pase de 2 docentes o funcionarios.
+# Que no esté en otro equipo de la edición y que la camiseta no se repita ya lo controla la base con UNIQUE.
 def verificar_alta_en_plantel(equipo: dict, ci) -> None:
     verificar_inscripcion(equipo["id_torneo"])
     jugador = db.consultar_uno("SELECT id_facultad, tipo FROM jugador WHERE ci = %s", (ci,))
@@ -79,7 +81,7 @@ def verificar_alta_en_plantel(equipo: dict, ci) -> None:
         raise ValueError("El jugador debe pertenecer a la facultad del equipo.")
     if cantidad_en_plantel(equipo["id_equipo"]) >= MAXIMO_PLANTEL:
         raise ValueError(f"El plantel ya tiene {MAXIMO_PLANTEL} jugadores.")
-    # Solo si el que entra es docente o funcionario, contamos cuántos hay ya. PyMySQL convierte la tupla en la lista del IN.
+    # Solo si entra un docente o un funcionario contamos cuántos hay. PyMySQL convierte la tupla en la lista del IN.
     if jugador["tipo"] in TIPOS_LIMITADOS:
         limitados = db.consultar_uno("""SELECT COUNT(*) AS n FROM equipo_jugador_torneo ejt
                                         JOIN jugador j ON j.ci = ejt.ci_jugador
@@ -98,7 +100,7 @@ def reservar_torneo(id_torneo) -> None:
     db.consultar("SELECT id_torneo FROM torneo WHERE id_torneo = %s FOR UPDATE", (id_torneo,))
 
 
-# La letra: un partido jugado no se elimina. Tampoco dejamos modificarlo; lo que se corrige es su planilla.
+# La letra dice que un partido jugado no se elimina. Tampoco dejamos modificarlo: lo que se corrige es la planilla.
 def verificar_partido_no_jugado(id_partido) -> None:
     partido = db.consultar_uno("SELECT estado FROM partido WHERE id_partido = %s", (id_partido,))
     if partido["estado"] == ESTADO_JUGADO:
@@ -107,27 +109,27 @@ def verificar_partido_no_jugado(id_partido) -> None:
 
 def verificar_partido(p: dict) -> None:
     """Controles de la letra al programar o modificar un partido. p tiene las columnas de la tabla partido."""
-    # Al modificar un partido, buscamos conflictos con OTROS partidos: por eso id_partido <> otro.
-    # Si es un alta todavía no hay id, y usamos 0, que no coincide con ningún partido.
+    # Al modificar un partido buscamos choques con otros partidos, no con él mismo: por eso id_partido <> otro.
+    # Si es un alta todavía no tiene id, y usamos 0, que no coincide con ninguno.
     otro = p.get("id_partido") or 0  # para no compararlo consigo mismo al modificar
     if db.consultar_uno("SELECT estado FROM torneo WHERE id_torneo = %s", (p["id_torneo"],))["estado"] == ESTADO_FINALIZADO:
         raise ValueError("El torneo ya finalizó.")
-    # La letra: ambos equipos tienen que tener al menos 5 jugadores.
+    # Los dos equipos tienen que tener al menos 5 jugadores.
     if (cantidad_en_plantel(p["id_equipo_local"]) < MINIMO_PLANTEL
             or cantidad_en_plantel(p["id_equipo_visitante"]) < MINIMO_PLANTEL):
         raise ValueError(f"Ambos equipos deben tener al menos {MINIMO_PLANTEL} jugadores.")
 
-    # Un partido cancelado no cuenta: los dos controles siguientes ignoran a los cancelados.
-    # Primero, que estos dos equipos no tengan ya un partido entre sí: los dos tienen que aparecer en el mismo partido.
+    # Los partidos cancelados no cuentan para estos dos controles (la letra lo permite).
+    # Primero, que estos dos equipos no tengan ya un partido entre ellos: los dos tienen que estar en el mismo partido.
     if p["estado"] != ESTADO_CANCELADO:
-        # Si la consulta devuelve alguna fila, hay conflicto (una lista vacía cuenta como falso).
+        # Si la consulta devuelve alguna fila, hay un choque (una lista vacía cuenta como falso).
         if db.consultar("""SELECT 1 FROM partido
                            WHERE id_torneo = %s AND id_partido <> %s AND estado <> %s
                              AND %s IN (id_equipo_local, id_equipo_visitante)
                              AND %s IN (id_equipo_local, id_equipo_visitante)""",
                         (p["id_torneo"], otro, ESTADO_CANCELADO, p["id_equipo_local"], p["id_equipo_visitante"])):
             raise ValueError("Estos equipos ya tienen un partido en esta edición.")
-        # Segundo, que ningún equipo juegue otro partido en la misma fecha del torneo: alcanza con que aparezca uno.
+        # Después, que ninguno de los dos juegue otro partido en la misma fecha. Alcanza con que aparezca uno, por eso va OR.
         if db.consultar("""SELECT 1 FROM partido
                            WHERE id_torneo = %s AND id_partido <> %s AND estado <> %s AND numero_fecha = %s
                              AND (%s IN (id_equipo_local, id_equipo_visitante)
@@ -136,7 +138,7 @@ def verificar_partido(p: dict) -> None:
                          p["id_equipo_local"], p["id_equipo_visitante"])):
             raise ValueError("Uno de los equipos ya juega en esa fecha del torneo.")
 
-    # La letra: una cancha no puede tener dos partidos el mismo día y turno. Postergados y cancelados no la ocupan.
+    # Una cancha no puede tener dos partidos el mismo día y turno. Los postergados y cancelados no la ocupan.
     if p["estado"] in (ESTADO_PROGRAMADO, ESTADO_JUGADO):
         if db.consultar("""SELECT 1 FROM partido
                            WHERE id_partido <> %s AND estado IN (%s, %s) AND dia = %s AND id_turno = %s
@@ -145,7 +147,7 @@ def verificar_partido(p: dict) -> None:
                          p["nombre_cancha"], p["id_complejo"])):
             raise ValueError("La cancha ya tiene un partido en ese día y turno.")
 
-    # La letra: solo se marca como jugado si el turno ya terminó. TIMESTAMP une el día y la hora en un solo dato.
+    # Solo se puede marcar como jugado si el turno ya terminó. TIMESTAMP junta el día y la hora en un solo valor.
     if p["estado"] == ESTADO_JUGADO:
         # NOW() de la base: una sola hora de referencia, sin importar dónde corra la aplicación
         turno = db.consultar_uno("SELECT TIMESTAMP(%s, hora_fin) > NOW() AS falta FROM turno WHERE id_turno = %s",
@@ -156,9 +158,9 @@ def verificar_partido(p: dict) -> None:
 
 # ---------------------------------------------------------------- planilla y sanciones
 
-# Se llama antes de cualquier cambio en la planilla, los goles o las tarjetas.
-# La base calcula dos datos: no_empezo (si todavía no llegó la hora) y vencido (si pasaron 48 horas desde el final).
-# Cada comparación devuelve 1 si es verdadera y 0 si no.
+# La llamamos antes de cualquier cambio en la planilla, los goles o las tarjetas.
+# La base calcula si el partido todavía no empezó (no_empezo) y si ya pasaron 48 horas desde que terminó (vencido).
+# Cada comparación da 1 si es verdad y 0 si no.
 def verificar_planilla_editable(id_partido) -> None:
     """Solo con el partido ya empezado y, si ya está jugado, dentro de las 48 horas posteriores."""
     partido = db.consultar_uno("""SELECT p.estado, tor.estado AS estado_torneo,
@@ -178,9 +180,9 @@ def verificar_planilla_editable(id_partido) -> None:
         raise ValueError("Pasaron más de 48 horas desde el partido: ya no puede corregirse.")
 
 
-# Busca al jugador en los planteles de los dos equipos: si no está, no puede figurar.
-# La suspensión abarca desde numero_fecha_inicio hasta inicio + cantidad - 1.
-# Ejemplo: empieza en la fecha 4 y dura 2 fechas, entonces abarca la 4 y la 5.
+# Buscamos al jugador en los planteles de los dos equipos. Si no está, no puede figurar.
+# Después vemos si tiene una sanción que abarque esta fecha: va desde numero_fecha_inicio hasta inicio + cantidad - 1.
+# Por ejemplo, si empieza en la fecha 4 y dura 2, abarca la 4 y la 5.
 def equipo_para_planilla(id_partido, ci) -> int:
     """Devuelve el equipo del jugador en este partido, si está en el plantel y no está suspendido."""
     partido = db.consultar_uno("""SELECT id_torneo, numero_fecha, id_equipo_local, id_equipo_visitante
@@ -198,10 +200,10 @@ def equipo_para_planilla(id_partido, ci) -> int:
     return plantel["id_equipo"]
 
 
-# Se ejecuta en la misma transacción que la tarjeta: se guardan las dos o ninguna.
-# Las amarillas se cuentan en toda la edición, incluida la recién insertada.
-# Con % vemos el resto de dividir entre 3: si da 0 (3, 6, 9...), corresponde sancionar. Si no, return termina acá.
-# La sanción es para la fecha siguiente. cantidad_fechas no se indica porque vale 1 por defecto en la tabla.
+# Se ejecuta en la misma transacción que la tarjeta, así que se guardan las dos o ninguna.
+# Las amarillas se cuentan en toda la edición, incluida la que se acaba de cargar.
+# Con % vemos el resto de dividir entre 3: si da 0 (3, 6, 9...) toca sanción, y si no, con return termina acá.
+# La sanción es para la fecha siguiente. No indicamos cantidad_fechas porque en la tabla vale 1 por defecto.
 def sancionar_por_tarjeta(id_tarjeta: int, id_partido, ci, color: str) -> None:
     """Roja, o cada 3 amarillas en la edición: una fecha de suspensión, la siguiente."""
     partido = db.consultar_uno("SELECT id_torneo, numero_fecha FROM partido WHERE id_partido = %s", (id_partido,))

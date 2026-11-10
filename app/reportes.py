@@ -1,7 +1,7 @@
 """Consultas de reportes. Los alias de columna son los encabezados que se muestran en pantalla.
 Todas reciben el parámetro %(torneo)s (las que no lo usan lo ignoran)."""
-# @dataclass crea una clase simple que solo guarda datos: cada reporte tiene un título y su consulta.
-# %(torneo)s es un parámetro con nombre: lo reemplaza execute, de forma segura, igual que %s.
+# Con @dataclass armamos una clase simple que solo guarda datos: cada reporte tiene un título y su consulta.
+# %(torneo)s es un parámetro con nombre: lo reemplaza execute, igual que %s.
 from dataclasses import dataclass
 
 
@@ -29,7 +29,7 @@ REPORTES = [
         GROUP BY e.id_equipo, e.nombre
         ORDER BY Puntos DESC, DG DESC, GF DESC"""),
 
-    # Se cuentan los goles por jugador. NOT g.autogol excluye los autogoles. El JOIN con la planilla da el equipo. LIMIT 10 deja los primeros 10.
+    # Contamos los goles de cada jugador sin los autogoles. El equipo sale de la planilla, y con LIMIT 10 quedan los diez primeros.
     Reporte("Goleadores (top 10)", """
         SELECT CONCAT(j.nombre, ' ', j.apellido) AS Jugador, e.nombre AS Equipo, COUNT(*) AS Goles
         FROM gol g
@@ -42,7 +42,7 @@ REPORTES = [
         ORDER BY Goles DESC, Jugador
         LIMIT 10"""),
 
-    # LEFT JOIN: aparecen también los equipos sin tarjetas. t.color = 'amarilla' vale 1 o 0, y SUM cuenta las amarillas.
+    # LEFT JOIN para que también salgan los equipos sin tarjetas. t.color = 'amarilla' vale 1 o 0, y SUM las cuenta.
     Reporte("Fair play por equipo (amarilla = 1, roja = 3; gana el menor puntaje)", """
         SELECT e.nombre AS Equipo,
                COALESCE(SUM(t.color = 'amarilla'), 0) AS Amarillas,
@@ -55,7 +55,7 @@ REPORTES = [
         GROUP BY e.id_equipo, e.nombre
         ORDER BY Puntaje, Equipo"""),
 
-    # Goles totales de cada partido, agrupados por fecha. AVG calcula el promedio. Solo cuentan los partidos jugados.
+    # Goles de cada partido jugado, agrupados por fecha. AVG saca el promedio.
     Reporte("Promedio de goles por partido en cada fecha", """
         SELECT p.numero_fecha AS Fecha, COUNT(*) AS Partidos,
                SUM(r.goles_local + r.goles_visitante) AS Goles,
@@ -65,7 +65,7 @@ REPORTES = [
         GROUP BY p.numero_fecha
         ORDER BY p.numero_fecha"""),
 
-    # La misma cuenta, pero sin GROUP BY: toda la edición es un solo grupo.
+    # La misma cuenta sin GROUP BY: toda la edición es un solo grupo.
     Reporte("Promedio de goles por partido en toda la edición", """
         SELECT COUNT(*) AS Partidos,
                SUM(r.goles_local + r.goles_visitante) AS Goles,
@@ -73,7 +73,7 @@ REPORTES = [
         FROM partido p JOIN resultado_partido r ON r.id_partido = p.id_partido
         WHERE p.id_torneo = %(torneo)s AND p.estado = 'jugado'"""),
 
-    # Partidos por cancha, sin contar los cancelados. La cancha se identifica por complejo y nombre.
+    # Cuántos partidos tuvo cada cancha, sin contar los cancelados.
     Reporte("Canchas más utilizadas", """
         SELECT CONCAT(c.nombre, ' - ', p.nombre_cancha) AS Cancha, COUNT(*) AS Partidos
         FROM partido p JOIN complejo c ON c.id_complejo = p.id_complejo
@@ -81,7 +81,7 @@ REPORTES = [
         GROUP BY p.id_complejo, p.nombre_cancha, c.nombre
         ORDER BY Partidos DESC, Cancha"""),
 
-    # Partidos por turno, sin contar los cancelados.
+    # Cuántos partidos tuvo cada turno, sin contar los cancelados.
     Reporte("Turnos más utilizados", """
         SELECT CONCAT(t.hora_inicio, ' a ', t.hora_fin) AS Turno, COUNT(*) AS Partidos
         FROM partido p JOIN turno t ON t.id_turno = p.id_turno
@@ -89,7 +89,7 @@ REPORTES = [
         GROUP BY t.id_turno, t.hora_inicio, t.hora_fin
         ORDER BY Partidos DESC, Turno"""),
 
-    # Cada columna cuenta un tipo: j.tipo = 'grado' vale 1 o 0, y SUM los suma. Este reporte no depende del torneo.
+    # Cada columna cuenta un tipo: j.tipo = 'grado' vale 1 o 0 y SUM los suma. Este reporte no depende del torneo.
     Reporte("Jugadores por facultad y tipo (todos los registrados)", """
         SELECT f.nombre AS Facultad,
                SUM(j.tipo = 'grado') AS Grado, SUM(j.tipo = 'posgrado') AS Posgrado,
@@ -99,7 +99,7 @@ REPORTES = [
         GROUP BY f.id_facultad, f.nombre
         ORDER BY Total DESC, Facultad"""),
 
-    # NOT EXISTS: inscriptos en un plantel que no aparecen en ninguna planilla. Es el ejemplo de los dependientes en la presentación de SQL.
+    # Con NOT EXISTS buscamos a los inscriptos que no aparecen en ninguna planilla.
     Reporte("Jugadores inscriptos que nunca figuraron en una planilla", """
         SELECT CONCAT(j.nombre, ' ', j.apellido) AS Jugador, e.nombre AS Equipo
         FROM equipo_jugador_torneo ejt
@@ -110,7 +110,7 @@ REPORTES = [
                           WHERE pp.ci_jugador = ejt.ci_jugador AND pp.id_equipo = ejt.id_equipo)
         ORDER BY Equipo, Jugador"""),
 
-    # El equipo del sancionado se obtiene del plantel, por cédula y torneo.
+    # El equipo del sancionado lo sacamos del plantel, por cédula y torneo.
     Reporte("Sanciones por equipo y motivo", """
         SELECT e.nombre AS Equipo, s.motivo AS Motivo, COUNT(*) AS Sanciones
         FROM sancion_jugador s
@@ -120,7 +120,7 @@ REPORTES = [
         GROUP BY e.nombre, s.motivo
         ORDER BY Equipo, Motivo"""),
 
-    # La subconsulta da el total de partidos, sin los programados. Cada estado se divide entre ese total.
+    # La subconsulta da el total de partidos sin los programados, y cada estado se divide entre ese total.
     Reporte("Porcentaje de partidos jugados, postergados y cancelados", """
         SELECT estado AS Estado, COUNT(*) AS Partidos,
                ROUND(100 * COUNT(*) / (SELECT COUNT(*) FROM partido WHERE id_torneo = %(torneo)s AND estado <> 'programado'), 1) AS Porcentaje
@@ -131,7 +131,8 @@ REPORTES = [
 
     # --- Consultas propuestas (la letra pide agregar tres) ---
 
-    # %% es un % común: se escribe doble porque en esta librería un % solo marca un parámetro. HAVING filtra grupos: resto 2 al dividir entre 3 es que le falta una amarilla.
+    # Va %% porque en esta librería un % solo marca un parámetro: %% es el % de SQL (el resto de la división).
+    # HAVING filtra grupos: si el resto de dividir entre 3 es 2, con una amarilla más se suspende.
     Reporte("Propuesta 1: jugadores al borde de la suspensión (una amarilla más y se suspenden)", """
         SELECT CONCAT(j.nombre, ' ', j.apellido) AS Jugador, e.nombre AS Equipo, COUNT(*) AS Amarillas
         FROM tarjeta t
@@ -144,7 +145,7 @@ REPORTES = [
         HAVING COUNT(*) %% 3 = 2
         ORDER BY Equipo, Jugador"""),
 
-    # Cuántas veces figura cada jugador en la planilla de un partido jugado.
+    # Cuántas veces aparece cada jugador en la planilla de un partido jugado.
     Reporte("Propuesta 2: jugadores con más partidos disputados (top 10)", """
         SELECT CONCAT(j.nombre, ' ', j.apellido) AS Jugador, e.nombre AS Equipo, COUNT(*) AS Partidos
         FROM planilla_partido pp
@@ -156,7 +157,7 @@ REPORTES = [
         ORDER BY Partidos DESC, Jugador
         LIMIT 10"""),
 
-    # Une equipo dos veces, con alias distintos: l (local) y v (visitante).
+    # Unimos equipo dos veces con alias distintos: l para el local y v para el visitante.
     Reporte("Propuesta 3: próximos partidos programados", """
         SELECT p.numero_fecha AS Fecha, p.dia AS Dia, t.hora_inicio AS Hora,
                l.nombre AS Local, v.nombre AS Visitante, p.nombre_cancha AS Cancha
