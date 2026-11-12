@@ -11,7 +11,7 @@ from datetime import date
 from functools import wraps
 
 import pymysql
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
 import db
@@ -314,6 +314,8 @@ def plantel(id_equipo):
     equipo = db.consultar_uno("""SELECT e.*, f.nombre AS facultad, t.nombre AS torneo, t.estado AS estado_torneo
                                  FROM equipo e JOIN facultad f ON f.id_facultad = e.id_facultad
                                  JOIN torneo t ON t.id_torneo = e.id_torneo WHERE e.id_equipo = %s""", (id_equipo,))
+    if equipo is None:
+        abort(404)  # alguien escribió a mano un equipo que no existe
     # jugadores de la facultad del equipo que no están en ningún equipo de esta edición
     disponibles = db.consultar("""SELECT j.* FROM jugador j
                                   WHERE j.id_facultad = %s AND NOT EXISTS (
@@ -539,6 +541,8 @@ def planilla(id_partido):
                                   JOIN turno t ON t.id_turno = p.id_turno
                                   JOIN resultado_partido r ON r.id_partido = p.id_partido
                                   WHERE p.id_partido = %s""", (id_partido,))
+    if partido is None:
+        abort(404)  # alguien escribió a mano un partido que no existe
     en_planilla = db.consultar("""SELECT pp.ci_jugador, j.nombre, j.apellido, e.nombre AS equipo
                                   FROM planilla_partido pp JOIN jugador j ON j.ci = pp.ci_jugador
                                   JOIN equipo e ON e.id_equipo = pp.id_equipo

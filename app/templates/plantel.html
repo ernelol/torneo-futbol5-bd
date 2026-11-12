@@ -5,6 +5,7 @@
 <p>{{ equipo.facultad }} · {{ equipo.torneo }} ({{ equipo.estado_torneo|etiqueta }}) ·
    <a href="{{ url_for('equipos', torneo=equipo.id_torneo) }}">Volver a equipos</a></p>
 <p class="nota">Entre 5 y 10 jugadores de la facultad, como máximo 2 docentes/funcionarios. Solo se modifica durante la inscripción.</p>
+{% if disponibles %}
 <form method="post" action="{{ url_for('agregar_al_plantel', id_equipo=equipo.id_equipo) }}" class="tarjeta">
   <label>Jugador
     <select name="ci_jugador" required>
@@ -14,6 +15,9 @@
   <label>Camiseta <input type="number" name="numero_camiseta" required min="1" max="99"></label>
   <button>Agregar</button>
 </form>
+{% else %}
+<p class="nota">No quedan jugadores de esta facultad que no estén ya en un equipo de esta edición.</p>
+{% endif %}
 <table>
   <tr><th>Camiseta</th><th>Jugador</th><th>Tipo</th><th></th></tr>
   {% for j in plantel %}

@@ -13,6 +13,7 @@
 <p class="nota">El resultado se calcula con los goles. Una vez jugado, la planilla puede corregirse solo durante 48 horas.</p>
 
 <h2>Jugadores en la planilla</h2>
+{% if disponibles %}
 <form method="post" action="{{ url_for('agregar_a_planilla', id_partido=partido.id_partido) }}" class="tarjeta">
   <label>Jugador
     <select name="ci_jugador" required>
@@ -21,6 +22,9 @@
   </label>
   <button>Agregar</button>
 </form>
+{% else %}
+<p class="nota">Ya están en la planilla todos los jugadores de los dos planteles.</p>
+{% endif %}
 <table>
   <tr><th>Equipo</th><th>Jugador</th><th></th></tr>
   {% for j in en_planilla %}
@@ -30,6 +34,7 @@
 </table>
 
 <h2>Goles</h2>
+{% if en_planilla %}
 <form method="post" action="{{ url_for('agregar_gol', id_partido=partido.id_partido) }}" class="tarjeta">
   <label>Jugador
     <select name="ci_jugador" required>
@@ -40,6 +45,9 @@
   <label><input type="checkbox" name="autogol"> Autogol</label>
   <button>Registrar gol</button>
 </form>
+{% else %}
+<p class="nota">Primero agregá jugadores a la planilla: solo pueden hacer goles los que jugaron el partido.</p>
+{% endif %}
 <table>
   <tr><th>Minuto</th><th>Jugador</th><th></th><th></th></tr>
   {% for g in goles %}
@@ -49,6 +57,7 @@
 </table>
 
 <h2>Tarjetas</h2>
+{% if en_planilla %}
 <form method="post" action="{{ url_for('agregar_tarjeta', id_partido=partido.id_partido) }}" class="tarjeta">
   <label>Jugador
     <select name="ci_jugador" required>
@@ -59,6 +68,9 @@
   <label>Color <select name="color" required>{{ m.opciones(COLORES_TARJETA, None) }}</select></label>
   <button>Registrar tarjeta</button>
 </form>
+{% else %}
+<p class="nota">Primero agregá jugadores a la planilla: solo pueden recibir tarjetas los que jugaron el partido.</p>
+{% endif %}
 <table>
   <tr><th>Minuto</th><th>Jugador</th><th>Color</th><th></th></tr>
   {% for t in tarjetas %}
